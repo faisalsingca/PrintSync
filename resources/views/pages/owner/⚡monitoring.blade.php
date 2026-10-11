@@ -142,7 +142,7 @@ new #[Title('Owner Monitoring')] class extends Component
         <header class="flex flex-col gap-3 border-b border-[var(--ps-border)] px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <div class="grid gap-1">
                 <h2 id="owner-routing-heading" class="text-xl font-semibold text-[var(--ps-text)]">Order Routing</h2>
-                <p class="text-sm text-[var(--ps-muted)]">Orders are assigned automatically by order type to staff who handle that service and share the workload. This view is read-only.</p>
+                <p class="text-sm text-[var(--ps-muted)]">Every order goes to all staff who handle that service. They all see it and any of them can work on it. This view is read-only.</p>
             </div>
             @if ($unassignedCount > 0)
                 <p class="text-sm font-medium text-amber-500">

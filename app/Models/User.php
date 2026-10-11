@@ -106,12 +106,6 @@ class User extends Authenticatable implements PasskeyUser
         ];
     }
 
-    public function sendEmailVerificationNotification(): void
-    {
-        if (! app()->environment('local')) {
-            parent::sendEmailVerificationNotification();
-        }
-    }
 
     /**
      * Determine whether this user is a staff member who manages inventory.
