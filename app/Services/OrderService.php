@@ -378,6 +378,7 @@ class OrderService
                 return ! $hasStaff[$line->value];
             })
             ->count();
+    }
 
     /**
      * Automatically assign an unassigned order to the eligible staff member with the lightest workload.
@@ -388,8 +389,7 @@ class OrderService
      * when the order has no valid service line, already has an active assignment, or
      * no eligible staff member exists yet.
      */
-    public function autoAssignOrder(Order $order): ?OrderAssignment
-    {
+    public function autoAssignOrder(Order $order): ?OrderAssignment  {
         $serviceLine = is_string($order->service_line)
             ? OrderServiceLine::tryFrom($order->service_line)
             : null;
