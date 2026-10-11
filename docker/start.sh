@@ -14,6 +14,7 @@ php artisan migrate --force
 # Creates the demo accounts (safe to repeat; it never changes existing ones)
 if [ "${RUN_SEEDERS}" = "true" ]; then
     php artisan db:seed --class=StaffSeeder --force
+    php artisan db:seed --class=InventorySeeder --force
 fi
 
 chown -R www-data:www-data storage bootstrap/cache
