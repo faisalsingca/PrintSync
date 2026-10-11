@@ -5,6 +5,7 @@ namespace App\Policies;
 use App\Models\Order;
 use App\Models\OrderAssignment;
 use App\Models\User;
+use App\Services\OrderService;
 
 class OrderPolicy
 {
@@ -19,18 +20,22 @@ class OrderPolicy
     /**
      * Determine whether the user may view the order.
      */
+    /**
+     * Determine whether the user may view the order.
+     */
     public function view(User $user, Order $order): bool
     {
         return match ($user->role) {
             'customer' => $order->customer_id === $user->id,
-            'staff' => $order->assignments()
-                ->where('staff_id', $user->id)
-                ->whereIn('assignment_status', [
-                    OrderAssignment::STATUS_OFFERED,
-                    OrderAssignment::STATUS_ACCEPTED,
-                ])
-                ->where('is_active', true)
-                ->exists(),
+            'staff' => app(OrderService::class)->staffCanServe($user, $order)
+                || $order->assignments()
+                    ->where('staff_id', $user->id)
+                    ->whereIn('assignment_status', [
+                        OrderAssignment::STATUS_OFFERED,
+                        OrderAssignment::STATUS_ACCEPTED,
+                    ])
+                    ->where('is_active', true)
+                    ->exists(),
             'cashier', 'owner' => true,
             default => false,
         };
@@ -62,11 +67,12 @@ class OrderPolicy
     public function updateProductionStatus(User $user, Order $order): bool
     {
         return $user->role === 'staff'
-            && $order->assignments()
-                ->where('staff_id', $user->id)
-                ->where('assignment_status', OrderAssignment::STATUS_ACCEPTED)
-                ->where('is_active', true)
-                ->exists();
+            && (app(OrderService::class)->staffCanServe($user, $order)
+                || $order->assignments()
+                    ->where('staff_id', $user->id)
+                    ->where('assignment_status', OrderAssignment::STATUS_ACCEPTED)
+                    ->where('is_active', true)
+                    ->exists());
     }
 
     /**

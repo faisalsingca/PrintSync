@@ -82,7 +82,7 @@ new #[Title('Staff Orders')] class extends Component
 <div class="staff-orders-page grid gap-6">
     <header class="grid gap-1">
         <h1 class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">Assigned Orders</h1>
-        <p class="text-sm text-[var(--ps-muted)]">Orders assigned to you automatically, based on your service specialty.</p>
+        <p class="text-sm text-[var(--ps-muted)]">All orders for your service specialty. Everyone with the same specialty sees the same orders.</p>
     </header>
 
     @if ($responseMessage !== '')

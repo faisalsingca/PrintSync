@@ -71,12 +71,7 @@ new #[Title('Create New Order')] class extends Component
             throw $exception;
         }
 
-        // Hand the order to the staff member who handles this service (shared fairly between staff).
-        try {
-            $orderService->autoAssignOrder($order);
-        } catch (\Throwable $exception) {
-            report($exception);
-        }
+
 
         session()->flash('status', 'Your order has been submitted successfully.');
 

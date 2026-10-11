@@ -77,7 +77,7 @@ class OrderService
                 ->where('is_active', true)
                 ->exists();
 
-            if (! $hasAcceptedAssignment) {
+            if (! $hasAcceptedAssignment && ! $this->staffCanServe($staff, $lockedOrder)) {
                 throw new AuthorizationException;
             }
 
@@ -360,12 +360,24 @@ class OrderService
      */
     public function countUnassignedOrders(): int
     {
+        $hasStaff = [];
+
         return Order::query()
             ->whereNotNull('service_line')
             ->where('status', '!=', OrderStatus::Completed->value)
-            ->whereDoesntHave('assignments', fn ($query) => $query->where('is_active', true))
+            ->get()
+            ->filter(function (Order $order) use (&$hasStaff): bool {
+                $line = OrderServiceLine::tryFrom((string) $order->service_line);
+
+                if ($line === null) {
+                    return false;
+                }
+
+                $hasStaff[$line->value] ??= $this->getEligibleStaff($line, $order)->isNotEmpty();
+
+                return ! $hasStaff[$line->value];
+            })
             ->count();
-    }
 
     /**
      * Automatically assign an unassigned order to the eligible staff member with the lightest workload.
@@ -442,22 +454,9 @@ class OrderService
      */
     public function autoAssignUnassignedOrders(): int
     {
-        $assigned = 0;
-
-        $orders = Order::query()
-            ->whereNotNull('service_line')
-            ->where('status', '!=', OrderStatus::Completed->value)
-            ->whereDoesntHave('assignments', fn ($query) => $query->where('is_active', true))
-            ->orderBy('order_id')
-            ->get();
-
-        foreach ($orders as $order) {
-            if ($this->autoAssignOrder($order) !== null) {
-                $assigned++;
-            }
-        }
-
-        return $assigned;
+        // Orders are no longer assigned one by one. Every staff member with a
+        // matching specialty sees them, so there is nothing to assign.
+        return 0;
     }
 
     /**
@@ -478,14 +477,37 @@ class OrderService
     public function getStaffOrders(User $staff): Collection
     {
         return Order::query()
-            ->whereHas('assignments', fn ($query) => $query
-                ->where('staff_id', $staff->id)
-                ->where('assignment_status', OrderAssignment::STATUS_ACCEPTED)
-                ->where('is_active', true))
+            ->whereIn('service_line', $this->serviceLinesFor($staff))
             ->with('customer')
             ->get();
     }
+    /**
+     * The service lines a staff member can work on, based on their specialties.
+     *
+     * @return list<string>
+     */
+    public function serviceLinesFor(User $staff): array
+    {
+        $specialties = $staff->specialties()->pluck('specialty')->all();
 
+        return collect(OrderServiceLine::cases())
+            ->filter(fn (OrderServiceLine $line): bool => array_intersect($this->eligibleSpecialties($line), $specialties) !== [])
+            ->map(fn (OrderServiceLine $line): string => $line->value)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Every staff member with a matching specialty shares the orders of that service.
+     */
+    public function staffCanServe(User $staff, Order $order): bool
+    {
+        if ($staff->role !== 'staff' || ! is_string($order->service_line)) {
+            return false;
+        }
+
+        return in_array($order->service_line, $this->serviceLinesFor($staff), true);
+    }
     /**
      * @return list<string>
      */

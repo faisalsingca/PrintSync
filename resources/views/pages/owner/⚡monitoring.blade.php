@@ -145,9 +145,9 @@ new #[Title('Owner Monitoring')] class extends Component
                 <p class="text-sm text-[var(--ps-muted)]">Orders are assigned automatically by order type to staff who handle that service and share the workload. This view is read-only.</p>
             </div>
             @if ($unassignedCount > 0)
-                <button type="button" wire:click="assignWaitingOrders" wire:loading.attr="disabled" class="ps-button-secondary w-fit">
-                    Assign {{ $unassignedCount }} waiting {{ str('order')->plural($unassignedCount) }}
-                </button>
+                <p class="text-sm font-medium text-amber-500">
+                    {{ $unassignedCount }} {{ str('order')->plural($unassignedCount) }} waiting for staff with the right specialty
+                </p>
             @endif
         </header>
         <ul class="divide-y divide-[var(--ps-border)]">
@@ -162,14 +162,18 @@ new #[Title('Owner Monitoring')] class extends Component
                         </h3>
                         <p class="text-sm text-[var(--ps-muted)]">{{ $order->customer->name }} · Submitted {{ $order->order_date->format('M j, Y') }}</p>
                     </div>
+                    @php
+                        $line = $order->service_line === null ? null : \App\OrderServiceLine::tryFrom($order->service_line);
+                        $team = $line === null ? collect() : app(\App\Services\OrderService::class)->getEligibleStaff($line, $order);
+                    @endphp
                     <p class="text-sm">
-                        @if ($assignment)
-                            <span class="text-[var(--ps-muted)]">Handled by</span>
-                            <span class="font-medium text-[var(--ps-text)]">{{ $assignment->staff->name }}</span>
-                        @elseif ($order->service_line === null)
+                        @if ($line === null)
                             <span class="text-[var(--ps-muted)]">No order type set</span>
-                        @else
+                        @elseif ($team->isEmpty())
                             <span class="font-medium text-amber-500">Waiting for eligible staff</span>
+                        @else
+                            <span class="text-[var(--ps-muted)]">Shared by</span>
+                            <span class="font-medium text-[var(--ps-text)]">{{ $team->pluck('name')->implode(', ') }}</span>
                         @endif
                     </p>
                     <span class="ps-status-badge w-fit">{{ OrderStatus::labelFor($order->status) }}</span>
