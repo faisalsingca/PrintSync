@@ -2,6 +2,8 @@
 
 use App\Models\Order;
 use App\OrderStatus;
+use App\Services\PaymentService;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -10,11 +12,26 @@ new #[Title('Order Details')] class extends Component
 {
     public Order $order;
 
-    public function mount(Order $order): void
+    public ?string $confirmedTotal = null;
+
+    public string $amountPaid = '0.00';
+
+    public ?string $remainingBalance = null;
+
+    public ?string $paymentStatus = null;
+
+    public Collection $payments;
+
+    public function mount(Order $order, PaymentService $paymentService): void
     {
         Gate::authorize('view', $order);
 
         $this->order = $order;
+        $this->confirmedTotal = $order->confirmed_total;
+        $this->amountPaid = $paymentService->getAmountPaid($order);
+        $this->remainingBalance = $paymentService->getRemainingBalance($order);
+        $this->paymentStatus = $paymentService->getPaymentStatus($order);
+        $this->payments = $paymentService->getOrderPayments($order)->sortBy('payment_date')->values();
     }
 };
 ?>
@@ -64,5 +81,55 @@ new #[Title('Order Details')] class extends Component
                 </dd>
             </div>
         </dl>
+    </section>
+
+    <section class="ps-glass grid gap-6 p-5 sm:p-8" aria-labelledby="order-payment-heading">
+        <div class="flex flex-col gap-3 border-b border-[var(--ps-border)] pb-5 sm:flex-row sm:items-center sm:justify-between">
+            <div class="grid gap-1">
+                <h2 id="order-payment-heading" class="text-xl font-semibold text-[var(--ps-text)]">Payment</h2>
+                <p class="text-sm text-[var(--ps-muted)]">Set by the cashier. Pay at the counter.</p>
+            </div>
+            <span @class([
+                'ps-status-badge w-fit',
+                'text-emerald-500' => $paymentStatus === 'paid',
+                'text-amber-500' => $paymentStatus === 'partial',
+                'text-red-500' => $paymentStatus === 'unpaid',
+            ])>
+                {{ $paymentStatus === null ? 'Waiting for total' : ucfirst($paymentStatus) }}
+            </span>
+        </div>
+
+        @if ($confirmedTotal === null)
+            <p class="text-sm text-[var(--ps-muted)]">The cashier hasn't set the total for this order yet. It will appear here once it is set.</p>
+        @else
+            <dl class="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-4">
+                <div class="rounded-2xl border border-[var(--ps-border)] bg-[var(--ps-surface)] p-4">
+                    <dt class="text-xs font-medium uppercase tracking-[0.12em] text-[var(--ps-muted)]">Order total</dt>
+                    <dd class="mt-2 text-2xl font-semibold tabular-nums text-[var(--ps-text)]">₱{{ number_format((float) $confirmedTotal, 2) }}</dd>
+                </div>
+                <div class="rounded-2xl border border-[var(--ps-border)] bg-[var(--ps-surface)] p-4">
+                    <dt class="text-xs font-medium uppercase tracking-[0.12em] text-[var(--ps-muted)]">Amount paid</dt>
+                    <dd class="mt-2 text-2xl font-semibold tabular-nums text-[var(--ps-text)]">₱{{ number_format((float) $amountPaid, 2) }}</dd>
+                </div>
+                <div class="rounded-2xl border border-[var(--ps-border)] bg-[var(--ps-surface)] p-4">
+                    <dt class="text-xs font-medium uppercase tracking-[0.12em] text-[var(--ps-muted)]">Balance left</dt>
+                    <dd class="mt-2 text-2xl font-semibold tabular-nums text-[var(--ps-text)]">₱{{ number_format((float) ($remainingBalance ?? 0), 2) }}</dd>
+                </div>
+            </dl>
+
+            @if ($payments->isNotEmpty())
+                <ul class="grid gap-2 rounded-xl border border-[var(--ps-border)] bg-[var(--ps-surface)] px-4 py-3 text-sm text-[var(--ps-muted)]">
+                    @foreach ($payments as $payment)
+                        <li wire:key="customer-payment-{{ $payment->payment_id }}" class="flex flex-wrap justify-between gap-2">
+                            <span>
+                                {{ str($payment->payment_method)->replace('_', ' ')->title()->replace('Gcash', 'GCash') }}
+                                · {{ $payment->payment_date->format('M j, Y g:i A') }}
+                            </span>
+                            <span class="font-medium tabular-nums text-[var(--ps-text)]">₱{{ number_format((float) $payment->received, 2) }}</span>
+                        </li>
+                    @endforeach
+                </ul>
+            @endif
+        @endif
     </section>
 </div>

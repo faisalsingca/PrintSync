@@ -329,7 +329,7 @@ new #[Title('Cashier Payments')] class extends Component
                 <div class="grid gap-6 md:grid-cols-2">
                     <flux:field>
                         <flux:label for="payment_method">Payment method</flux:label>
-                        <select id="payment_method" wire:model="payment_method" class="ps-input" required {{ $canSubmitPayment ? '' : 'disabled' }}>
+                        <select id="payment_method" wire:model="payment_method" class="ps-input" required>
                             <option value="">Select a method</option>
                             <option value="cash">Cash</option>
                             <option value="gcash">GCash</option>
@@ -340,19 +340,19 @@ new #[Title('Cashier Payments')] class extends Component
 
                     <flux:field>
                         <flux:label for="received">Amount received now (₱)</flux:label>
-                        <flux:input id="received" wire:model="received" type="number" min="0" step="0.01" required {{ $canSubmitPayment ? '' : 'disabled' }} />
+                        <flux:input id="received" wire:model="received" type="number" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 2000" required />
                         <flux:error name="received" />
                     </flux:field>
 
                     <flux:field>
                         <flux:label for="payment_date">Payment date and time</flux:label>
-                        <flux:input id="payment_date" wire:model="payment_date" type="datetime-local" required {{ $canSubmitPayment ? '' : 'disabled' }} />
+                        <flux:input id="payment_date" wire:model="payment_date" type="datetime-local" required />
                         <flux:error name="payment_date" />
                     </flux:field>
 
                     <div class="grid content-start gap-2">
-                        <label for="received_in_person" class="flex min-h-10 items-center gap-3 text-sm text-[var(--ps-text)] {{ $canSubmitPayment ? '' : 'opacity-60' }}">
-                            <input id="received_in_person" type="checkbox" wire:model="received_in_person" class="size-4 accent-[var(--ps-accent)]" {{ $canSubmitPayment ? '' : 'disabled' }}>
+                        <label for="received_in_person" class="flex min-h-10 items-center gap-3 text-sm text-[var(--ps-text)]">
+                            <input id="received_in_person" type="checkbox" wire:model="received_in_person" class="size-4 accent-[var(--ps-accent)]">
                             I confirm this payment has been received in person.
                         </label>
                         <flux:error name="received_in_person" />
@@ -362,9 +362,9 @@ new #[Title('Cashier Payments')] class extends Component
                 @if (! $canSubmitPayment)
                     <p class="rounded-xl border border-[var(--ps-border)] bg-[var(--ps-surface)] px-4 py-3 text-sm text-[var(--ps-muted)]">
                         @if ($selectedOrder === null)
-                            Select an order to begin.
+                            Select an order above to record this payment.
                         @elseif ($selectedOrder->confirmed_total === null)
-                            Set this order's total above, then you can record a payment.
+                            Set this order's total above first, then you can record the payment.
                         @else
                             This order has already been fully paid, so no additional payment can be recorded.
                         @endif

@@ -552,3 +552,24 @@ select:focus[data-flux-control] {
         animation: none;
     }
 }
+[x-cloak] {
+    display: none !important;
+}
+
+.ps-rail {
+    transition: transform 200ms ease;
+}
+
+.ps-main-shell {
+    transition: padding 200ms ease;
+}
+
+@media (min-width: 64rem) {
+    .ps-app-shell.ps-rail-collapsed .ps-rail {
+        transform: translateX(100%);
+    }
+
+    .ps-app-shell.ps-rail-collapsed .ps-main-shell {
+        padding-inline-end: 0;
+    }
+}

@@ -56,6 +56,10 @@ new #[Title('Customer Orders')] class extends Component
                                         <span>{{ number_format($order->quantity) }} {{ str('copy')->plural($order->quantity) }}</span>
                                         <span aria-hidden="true">·</span>
                                         <span>{{ $order->order_date->format('M j, Y') }}</span>
+                                    @if ($order->confirmed_total !== null)
+                                        <span aria-hidden="true">·</span>
+                                        <span class="font-medium text-[var(--ps-text)]">Total ₱{{ number_format((float) $order->confirmed_total, 2) }}</span>
+                                        @endif
                                     </p>
                                 </div>
                             </div>
