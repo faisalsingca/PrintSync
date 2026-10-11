@@ -80,6 +80,12 @@ Route::middleware(['auth'])->group(function () {
 
         Route::livewire('cashier/payments', 'pages::cashier.payments')
             ->name('cashier.payments');
+
+        Route::livewire('cashier/inventory', 'pages::cashier.inventory')
+            ->name('cashier.inventory');
+
+        Route::livewire('cashier/walk-in-orders/create', 'pages::cashier.create-walk-in-order')
+            ->name('cashier.walk-in.create');
     });
 
     Route::middleware('role:owner')->group(function () {

@@ -2,6 +2,7 @@
 
 use App\Models\Order;
 use App\Models\User;
+use App\Services\InventoryService;
 use App\Services\PaymentService;
 use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Title;
@@ -17,7 +18,9 @@ new #[Title('Cashier Dashboard')] class extends Component
 
     public Collection $recentPayments;
 
-    public function mount(PaymentService $paymentService): void
+    public array $inventorySummary = [];
+
+    public function mount(PaymentService $paymentService, InventoryService $inventoryService): void
     {
         $cashier = auth()->user();
         $payments = $paymentService->getCashierPayments($cashier);
@@ -27,6 +30,7 @@ new #[Title('Cashier Dashboard')] class extends Component
         $this->paymentCount = $summary['count'];
         $this->totalReceived = $summary['received'];
         $this->recentPayments = $payments->take(5);
+        $this->inventorySummary = $inventoryService->getInventorySummary();
     }
 };
 ?>
@@ -38,9 +42,17 @@ new #[Title('Cashier Dashboard')] class extends Component
                 CASHIER WORKSPACE
             </span>
             <h1 class="text-3xl font-semibold tracking-[-0.045em] text-[var(--ps-text)] sm:text-4xl">Cashier Dashboard</h1>
-            <p class="text-sm leading-6 text-[var(--ps-muted)]">A snapshot of orders and payments you have recorded.</p>
+            <p class="text-sm leading-6 text-[var(--ps-muted)]">A snapshot of orders, payments you have recorded, and inventory.</p>
         </div>
     </section>
+
+    <a href="{{ route('cashier.walk-in.create') }}" wire:navigate class="ps-glass flex flex-wrap items-center justify-between gap-3 p-5 transition-colors hover:border-[var(--ps-border-strong)]">
+        <span class="grid gap-1">
+            <span class="font-medium text-[var(--ps-text)]">Customer ordering in person?</span>
+            <span class="text-sm text-[var(--ps-muted)]">Record their order here.</span>
+        </span>
+        <span class="ps-button-secondary">New walk-in order <span aria-hidden="true">→</span></span>
+    </a>
 
     <section class="grid gap-4 sm:grid-cols-3" aria-label="Payment and order summary">
         <article class="ps-glass grid gap-4 p-5 sm:p-6">
@@ -55,6 +67,21 @@ new #[Title('Cashier Dashboard')] class extends Component
             <h2 class="text-sm font-medium text-[var(--ps-muted)]">Amount Received by You</h2>
             <p class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">{{ $totalReceived }}</p>
         </article>
+    </section>
+
+    <section class="grid gap-4 sm:grid-cols-3" aria-label="Inventory summary">
+        <a href="{{ route('cashier.inventory') }}" wire:navigate class="ps-glass grid gap-4 p-5 transition-colors hover:border-[var(--ps-border-strong)] sm:p-6">
+            <h2 class="text-sm font-medium text-[var(--ps-muted)]">Materials</h2>
+            <p class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">{{ number_format($inventorySummary['inventory_count'] ?? 0) }}</p>
+        </a>
+        <a href="{{ route('cashier.inventory') }}#low-stock-reports-heading" wire:navigate class="ps-glass grid gap-4 p-5 transition-colors hover:border-[var(--ps-border-strong)] sm:p-6">
+            <h2 class="text-sm font-medium text-[var(--ps-muted)]">Open Low-Stock Reports</h2>
+            <p class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">{{ number_format($inventorySummary['open_low_stock_alert_count'] ?? 0) }}</p>
+        </a>
+        <a href="{{ route('cashier.inventory') }}" wire:navigate class="ps-glass grid gap-4 p-5 transition-colors hover:border-[var(--ps-border-strong)] sm:p-6">
+            <h2 class="text-sm font-medium text-[var(--ps-muted)]">Manage Inventory</h2>
+            <p class="text-sm leading-6 text-[var(--ps-muted)]">Add, deduct, or remove materials.</p>
+        </a>
     </section>
 
     <section class="ps-glass overflow-hidden" aria-labelledby="cashier-recent-payments-heading">

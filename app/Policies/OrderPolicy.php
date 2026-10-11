@@ -16,7 +16,10 @@ class OrderPolicy
     {
         return $user->role === 'customer';
     }
-
+  public function createWalkIn(User $user): bool
+  {
+      return $user->role === 'cashier';
+  }
     /**
      * Determine whether the user may view the order.
      */

@@ -154,8 +154,8 @@ test('receipt information includes the order customer and only its payments', fu
         ->and($receiptPayments->modelKeys())->toBe([$payment->payment_id]);
 });
 
-test('stock-in validation, inventory updates, relationships, and staff authorization work together', function () {
-    $staff = User::factory()->create(['role' => 'staff']);
+test('stock-in validation, inventory updates, relationships, and cashier authorization work together', function () {
+    $staff = User::factory()->create(['role' => 'cashier']);
     $inventory = createBusinessIntegrationInventory('Copy paper');
     $stockInAttributes = [
         'inventory_id' => $inventory->inventory_id,
@@ -175,7 +175,8 @@ test('stock-in validation, inventory updates, relationships, and staff authoriza
     expect($inventory->fresh()->quantity)->toBe('12.500')
         ->and($stockIn->inventory->is($inventory))->toBeTrue()
         ->and($stockIn->staff->is($staff))->toBeTrue()
-        ->and(Gate::forUser($staff)->allows('addStock', Inventory::class))->toBeTrue();
+        ->and(Gate::forUser($staff)->allows('addStock', Inventory::class))->toBeTrue()
+        ->and(Gate::forUser(User::factory()->create(['role' => 'staff']))->allows('addStock', Inventory::class))->toBeFalse();
 });
 
 test('low-stock alert validation creates a related alert authorized for staff only', function () {
@@ -227,6 +228,8 @@ test('role access remains correctly scoped across orders inventory and payments'
         ->and(Gate::forUser($staff)->allows('viewAny', Inventory::class))->toBeTrue()
         ->and(Gate::forUser($owner)->allows('viewAny', Inventory::class))->toBeTrue()
         ->and(Gate::forUser($customer)->allows('viewAny', Inventory::class))->toBeFalse()
+        ->and(Gate::forUser($cashier)->allows('viewAny', Inventory::class))->toBeTrue()
+        ->and(Gate::forUser($cashier)->allows('manage', Inventory::class))->toBeTrue()
         ->and(Gate::forUser($cashier)->allows('viewAny', Payment::class))->toBeTrue()
         ->and(Gate::forUser($owner)->allows('viewAny', Payment::class))->toBeTrue()
         ->and(Gate::forUser($staff)->allows('create', Payment::class))->toBeFalse();

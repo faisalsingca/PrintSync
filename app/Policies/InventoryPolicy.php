@@ -6,35 +6,27 @@ use App\Models\User;
 
 class InventoryPolicy
 {
-    /**
-     * Determine whether the user may view the inventory list.
-     */
     public function viewAny(User $user): bool
     {
-        return in_array($user->role, ['staff', 'owner'], true);
+        return match ($user->role) {
+            'staff' => $user->canReportLowStock(),
+            'cashier', 'owner' => true,
+            default => false,
+        };
     }
 
-    /**
-     * Determine whether the user may add, edit, or delete inventory materials.
-     */
     public function manage(User $user): bool
     {
-        return $user->isInventoryClerk();
+        return $user->role === 'cashier';
     }
 
-    /**
-     * Determine whether the user may add stock.
-     */
     public function addStock(User $user): bool
     {
-        return $user->role === 'staff';
+        return $user->role === 'cashier';
     }
 
-    /**
-     * Determine whether the user may create a low-stock alert.
-     */
     public function createLowStockAlert(User $user): bool
     {
-        return $user->role === 'staff';
+        return $user->canReportLowStock();
     }
 }

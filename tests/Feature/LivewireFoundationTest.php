@@ -10,7 +10,7 @@ use Illuminate\Support\Carbon;
 $livewirePagesByRole = [
     'customer' => ['customer.dashboard', 'customer.orders', 'customer.orders.create'],
     'staff' => ['staff.dashboard', 'staff.orders', 'staff.inventory'],
-    'cashier' => ['cashier.dashboard', 'cashier.payments'],
+    'cashier' => ['cashier.dashboard', 'cashier.payments', 'cashier.inventory'],
     'owner' => ['owner.dashboard', 'owner.monitoring'],
 ];
 
@@ -50,6 +50,7 @@ test('each role can access its own Livewire pages', function (string $role, stri
     'staff inventory' => ['staff', 'staff.inventory'],
     'cashier dashboard' => ['cashier', 'cashier.dashboard'],
     'cashier payments' => ['cashier', 'cashier.payments'],
+    'cashier inventory' => ['cashier', 'cashier.inventory'],
     'owner dashboard' => ['owner', 'owner.dashboard'],
     'owner monitoring' => ['owner', 'owner.monitoring'],
 ]);

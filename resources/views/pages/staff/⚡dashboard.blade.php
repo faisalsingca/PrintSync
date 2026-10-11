@@ -1,7 +1,6 @@
 <?php
 
 use App\OrderStatus;
-use App\Services\InventoryService;
 use App\Services\OrderService;
 use Illuminate\Database\Eloquent\Collection;
 use Livewire\Attributes\Title;
@@ -15,11 +14,7 @@ new #[Title('Staff Dashboard')] class extends Component
 
     public Collection $activeOrders;
 
-    public bool $isInventoryClerk = false;
-
-    public array $inventorySummary = [];
-
-    public function mount(OrderService $orderService, InventoryService $inventoryService): void
+    public function mount(OrderService $orderService): void
     {
         $user = auth()->user();
         $orders = $orderService->getStaffOrders($user);
@@ -37,12 +32,6 @@ new #[Title('Staff Dashboard')] class extends Component
             ->sortByDesc('order_date')
             ->take(5)
             ->values();
-
-        $this->isInventoryClerk = $user->isInventoryClerk();
-
-        if ($this->isInventoryClerk) {
-            $this->inventorySummary = $inventoryService->getInventorySummary();
-        }
     }
 };
 ?>
@@ -51,28 +40,23 @@ new #[Title('Staff Dashboard')] class extends Component
     <section class="relative isolate overflow-hidden rounded-[1.6rem] border border-[var(--ps-border-strong)] bg-[radial-gradient(ellipse_at_82%_8%,rgb(184_243_74/13%),transparent_42%),var(--ps-glass)] px-6 py-8 shadow-[var(--ps-shadow)] sm:px-9 sm:py-10">
         <div class="grid gap-2">
             <span class="inline-flex w-fit rounded-full border border-[var(--ps-border-strong)] bg-[var(--ps-accent-soft)] px-3 py-1 text-xs font-semibold tracking-wide text-[var(--ps-accent)]">
-                {{ $isInventoryClerk ? 'INVENTORY WORKSPACE' : 'STAFF WORKSPACE' }}
+                STAFF WORKSPACE
             </span>
             <h1 class="text-3xl font-semibold tracking-[-0.045em] text-[var(--ps-text)] sm:text-4xl">Staff Dashboard</h1>
             <p class="text-sm leading-6 text-[var(--ps-muted)]">
-                {{ $isInventoryClerk ? 'Your inventory summary, plus any orders assigned to you.' : 'A summary of the orders assigned to you. Tap a card to see those orders.' }}
+                A summary of the orders assigned to you. Tap a card to see those orders.
             </p>
         </div>
     </section>
-
-    @if ($isInventoryClerk)
-        <section class="grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-4" aria-label="Inventory summary">
-            <a href="{{ route('staff.inventory') }}" wire:navigate class="ps-glass grid gap-3 p-5 transition-colors hover:border-[var(--ps-border-strong)]">
-                <h2 class="text-sm font-medium text-[var(--ps-muted)]">Materials</h2>
-                <p class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">{{ $inventorySummary['inventory_count'] ?? 0 }}</p>
-            </a>
-            <a href="{{ route('staff.inventory') }}" wire:navigate class="ps-glass grid gap-3 p-5 transition-colors hover:border-[var(--ps-border-strong)]">
-                <h2 class="text-sm font-medium text-[var(--ps-muted)]">Low-stock alerts</h2>
-                <p class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">{{ $inventorySummary['low_stock_alert_count'] ?? 0 }}</p>
-            </a>
-        </section>
-    @endif
-
+@if (auth()->user()->canReportLowStock())
+    <a href="{{ route('staff.inventory') }}" wire:navigate class="ps-glass flex flex-wrap items-center justify-between gap-3 p-5 transition-colors hover:border-[var(--ps-border-strong)]">
+        <span class="grid gap-1">
+            <span class="font-medium text-[var(--ps-text)]">Running low on a material?</span>
+            <span class="text-sm text-[var(--ps-muted)]">Report it and the cashier will restock it.</span>
+        </span>
+        <span class="ps-button-secondary">Report low stock <span aria-hidden="true">→</span></span>
+    </a>
+@endif
     <section class="grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-4" aria-label="Assigned order counts by current status">
         <a href="{{ route('staff.orders') }}" wire:navigate class="ps-glass grid gap-3 p-5 transition-colors hover:border-[var(--ps-border-strong)]">
             <h2 class="text-sm font-medium text-[var(--ps-muted)]">Assigned Orders</h2>

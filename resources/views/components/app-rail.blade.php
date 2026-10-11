@@ -11,14 +11,17 @@
         'staff' => array_values(array_filter([
             ['Dashboard', 'home', route('staff.dashboard'), request()->routeIs('staff.dashboard')],
             ['View Assigned Orders', 'clipboard-document-list', route('staff.orders'), request()->routeIs('staff.orders', 'staff.orders.show')],
-            auth()->user()->isInventoryClerk()
-                ? ['Inventory', 'cube', route('staff.inventory'), request()->routeIs('staff.inventory')]
+            auth()->user()->canReportLowStock()
+                ? ['Report Low Stock', 'exclamation-triangle', route('staff.inventory'), request()->routeIs('staff.inventory')]
                 : null,
         ])),
         'cashier' => [
             ['Dashboard', 'home', route('cashier.dashboard'), request()->routeIs('cashier.dashboard')],
+            ['Walk-in Order', 'plus-circle', route('cashier.walk-in.create'), request()->routeIs('cashier.walk-in.create')],
             ['Manage Payments', 'banknotes', route('cashier.payments').'#record-payment-heading', false],
             ['Payment Records', 'document-text', route('cashier.payments').'#payment-records-heading', false],
+            ['Inventory', 'cube', route('cashier.inventory'), request()->routeIs('cashier.inventory')],
+            ['Low-Stock Reports', 'exclamation-triangle', route('cashier.inventory').'#low-stock-reports-heading', false],
         ],
         'owner' => [
             ['Dashboard', 'home', route('owner.dashboard'), request()->routeIs('owner.dashboard')],

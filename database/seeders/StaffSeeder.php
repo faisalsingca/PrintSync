@@ -44,10 +44,6 @@ class StaffSeeder extends Seeder
             ['name' => 'Rico Flores', 'email' => 'operator1@printsync.test'],
             ['name' => 'Dennis Garcia', 'email' => 'operator2@printsync.test'],
         ],
-        'inventory_clerk' => [
-            ['name' => 'Grace Ramos', 'email' => 'inventory1@printsync.test'],
-            ['name' => 'Ian Castillo', 'email' => 'inventory2@printsync.test'],
-        ],
     ];
 
     /**

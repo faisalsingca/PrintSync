@@ -6,6 +6,7 @@ use App\Models\Inventory;
 use App\Models\InventoryAlert;
 use App\Models\StockIn;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -90,7 +91,7 @@ class InventoryService
     }
 
     /**
-     * Deduct stock that was used. Records a low-stock alert automatically when the
+     * Deduct stock that was used (done by the cashier). Records a low-stock alert automatically when the
      * material drops into Low Stock or Out of Stock.
      *
      * @throws ValidationException when more than the remaining quantity is deducted
@@ -176,9 +177,52 @@ class InventoryService
     }
 
     /**
+     * Low-stock reports the cashier still has to handle, newest first.
+     *
+     * A report counts as handled once stock has been added to that material
+     * after the report was made.
+     *
+     * @return Collection<int, InventoryAlert>
+     */
+    public function getOpenLowStockAlerts(): Collection
+    {
+        return $this->openLowStockAlertsQuery()
+            ->with(['inventory', 'staff.specialties'])
+            ->latest('alert_date')
+            ->latest('alert_id')
+            ->get();
+    }
+
+    /**
+     * Whether this staff member already has an unhandled low-stock report for the material.
+     */
+    public function hasOpenAlertFrom(Inventory $inventory, User $staff): bool
+    {
+        return $this->openLowStockAlertsQuery()
+            ->where('inventory_id', $inventory->inventory_id)
+            ->where('staff_id', $staff->id)
+            ->exists();
+    }
+
+    /**
+     * @return Builder<InventoryAlert>
+     */
+    private function openLowStockAlertsQuery(): Builder
+    {
+        return InventoryAlert::query()
+            ->where('alert_type', 'low_stock')
+            ->whereNotExists(function ($query): void {
+                $query->select(DB::raw(1))
+                    ->from('stock_in')
+                    ->whereColumn('stock_in.inventory_id', 'inventory_alerts.inventory_id')
+                    ->whereColumn('stock_in.date_added', '>=', 'inventory_alerts.alert_date');
+            });
+    }
+
+    /**
      * Retrieve inventory and recorded low-stock alert counts.
      *
-     * @return array{inventory_count: int, low_stock_alert_count: int}
+     * @return array{inventory_count: int, low_stock_alert_count: int, open_low_stock_alert_count: int}
      */
     public function getInventorySummary(): array
     {
@@ -187,6 +231,7 @@ class InventoryService
             'low_stock_alert_count' => InventoryAlert::query()
                 ->where('alert_type', 'low_stock')
                 ->count(),
+            'open_low_stock_alert_count' => $this->openLowStockAlertsQuery()->count(),
         ];
     }
 

@@ -12,9 +12,15 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Str;
 
 class OrderService
 {
+    public function createWalkInOrder()
+    {
+        // TODO: implement walk-in order creation.
+    }
+
     /**
      * Retrieve counts grouped by each order's current status.
      *
@@ -34,7 +40,7 @@ class OrderService
             ])
             ->all();
     }
-
+    
     /**
      * Create an order from validated attributes.
      *

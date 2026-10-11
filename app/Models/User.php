@@ -106,18 +106,19 @@ class User extends Authenticatable implements PasskeyUser
         ];
     }
 
+   private const NO_STOCK_SPECIALTIES = ['graphic_designer'];
 
-    /**
-     * Determine whether this user is a staff member who manages inventory.
-     */
-    public function isInventoryClerk(): bool
-    {
-        return $this->role === 'staff'
-            && $this->specialties()
-                ->where('specialty', StaffSpecialtyType::InventoryClerk->value)
-                ->exists();
-    }
+   public function canReportLowStock(): bool
+   {
+       if ($this->role !== 'staff') {
+           return false;
+       }
 
+       $specialties = $this->specialties()->pluck('specialty');
+
+       return $specialties->isEmpty()
+           || $specialties->contains(fn (string $s): bool => ! in_array($s, self::NO_STOCK_SPECIALTIES, true));
+   }
     /**
      * Get the user's initials
      */

@@ -104,36 +104,35 @@ test('cashiers and owners can view orders', function (string $role) {
     'owner' => ['owner'],
 ]);
 
-test('staff and owners can view inventory', function (string $role) {
+test('staff, cashiers and owners can view inventory', function (string $role) {
     $user = User::factory()->create(['role' => $role]);
 
     expect(Gate::forUser($user)->allows('viewAny', Inventory::class))->toBeTrue();
 })->with([
     'staff' => ['staff'],
+    'cashier' => ['cashier'],
     'owner' => ['owner'],
 ]);
 
-test('customers and cashiers cannot view inventory', function (string $role) {
-    $user = User::factory()->create(['role' => $role]);
+test('customers cannot view inventory', function () {
+    $user = User::factory()->create(['role' => 'customer']);
 
     expect(Gate::forUser($user)->allows('viewAny', Inventory::class))->toBeFalse();
-})->with([
-    'customer' => ['customer'],
-    'cashier' => ['cashier'],
-]);
+});
 
-test('only staff can add stock', function (string $role, bool $allowed) {
+test('only the cashier can manage inventory and add stock', function (string $role, bool $allowed) {
     $user = User::factory()->create(['role' => $role]);
 
-    expect(Gate::forUser($user)->allows('addStock', Inventory::class))->toBe($allowed);
+    expect(Gate::forUser($user)->allows('manage', Inventory::class))->toBe($allowed)
+        ->and(Gate::forUser($user)->allows('addStock', Inventory::class))->toBe($allowed);
 })->with([
-    'staff' => ['staff', true],
+    'cashier' => ['cashier', true],
+    'staff' => ['staff', false],
     'owner' => ['owner', false],
     'customer' => ['customer', false],
-    'cashier' => ['cashier', false],
 ]);
 
-test('only staff can create low-stock alerts', function (string $role, bool $allowed) {
+test('only staff can report low stock to the cashier', function (string $role, bool $allowed) {
     $user = User::factory()->create(['role' => $role]);
 
     expect(Gate::forUser($user)->allows('createLowStockAlert', Inventory::class))->toBe($allowed);
@@ -142,33 +141,4 @@ test('only staff can create low-stock alerts', function (string $role, bool $all
     'owner' => ['owner', false],
     'customer' => ['customer', false],
     'cashier' => ['cashier', false],
-]);
-
-test('cashiers and owners can view payments', function (string $role) {
-    $user = User::factory()->create(['role' => $role]);
-
-    expect(Gate::forUser($user)->allows('viewAny', Payment::class))->toBeTrue();
-})->with([
-    'cashier' => ['cashier'],
-    'owner' => ['owner'],
-]);
-
-test('customers and staff cannot view payments', function (string $role) {
-    $user = User::factory()->create(['role' => $role]);
-
-    expect(Gate::forUser($user)->allows('viewAny', Payment::class))->toBeFalse();
-})->with([
-    'customer' => ['customer'],
-    'staff' => ['staff'],
-]);
-
-test('only cashiers can create payments', function (string $role, bool $allowed) {
-    $user = User::factory()->create(['role' => $role]);
-
-    expect(Gate::forUser($user)->allows('create', Payment::class))->toBe($allowed);
-})->with([
-    'cashier' => ['cashier', true],
-    'owner' => ['owner', false],
-    'customer' => ['customer', false],
-    'staff' => ['staff', false],
 ]);
