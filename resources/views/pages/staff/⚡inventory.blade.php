@@ -24,21 +24,12 @@ new #[Title('Staff Inventory')] class extends Component
 
     public string $unit = '';
 
-    public string $status = 'available';
-
-    // Edit-material form
-    public ?int $editingId = null;
-
-    public string $edit_material_name = '';
-
-    public string $edit_quantity = '';
-
-    public string $edit_unit = '';
-
-    public string $edit_status = 'available';
+    public string $low_stock_level = '10';
 
     // Per-row inputs
     public array $stockAdd = [];
+
+    public array $deduct = [];
 
     public array $alertRemarks = [];
 
@@ -65,7 +56,7 @@ new #[Title('Staff Inventory')] class extends Component
             'material_name' => ['required', 'string', 'max:150', Rule::unique('inventory', 'material_name')],
             'quantity' => ['required', 'numeric', 'min:0', 'max:999999999', 'decimal:0,3'],
             'unit' => ['required', 'string', 'max:30'],
-            'status' => ['required', Rule::in($this->statuses())],
+            'low_stock_level' => ['required', 'numeric', 'min:0', 'max:999999999', 'decimal:0,3'],
         ]);
 
         $inventoryService->createMaterial($validated);
@@ -73,53 +64,31 @@ new #[Title('Staff Inventory')] class extends Component
         $this->successMessage = "{$validated['material_name']} was added to inventory.";
         $this->deleteError = '';
         $this->reset('material_name', 'quantity', 'unit');
-        $this->status = 'available';
+        $this->low_stock_level = '10';
         $this->reload();
     }
 
-    public function startEdit(int $inventoryId): void
+    public function deductStock(int $inventoryId, InventoryService $inventoryService): void
     {
         Gate::authorize('manage', Inventory::class);
+
+        $this->validate([
+            "deduct.$inventoryId" => ['required', 'numeric', 'gt:0', 'max:999999999', 'decimal:0,3'],
+        ], [], ["deduct.$inventoryId" => 'quantity to deduct']);
 
         $item = Inventory::query()->findOrFail($inventoryId);
 
-        $this->editingId = $item->inventory_id;
-        $this->edit_material_name = $item->material_name;
-        $this->edit_quantity = (string) $item->quantity;
-        $this->edit_unit = $item->unit;
-        $this->edit_status = $item->status;
-        $this->resetErrorBag();
+        try {
+            $updated = $inventoryService->deductStock($item, auth()->user(), (string) $this->deduct[$inventoryId]);
+        } catch (ValidationException $exception) {
+            $this->addError("deduct.$inventoryId", $exception->errors()['deduct'][0] ?? 'This quantity cannot be deducted.');
+
+            return;
+        }
+
+        $this->successMessage = "Deducted {$this->deduct[$inventoryId]} {$updated->unit} from {$updated->material_name}. Status: {$updated->stockStatusLabel()}.";
         $this->deleteError = '';
-    }
-
-    public function cancelEdit(): void
-    {
-        $this->editingId = null;
-        $this->resetErrorBag();
-    }
-
-    public function saveEdit(InventoryService $inventoryService): void
-    {
-        Gate::authorize('manage', Inventory::class);
-
-        $item = Inventory::query()->findOrFail((int) $this->editingId);
-
-        $validated = $this->validate([
-            'edit_material_name' => ['required', 'string', 'max:150', Rule::unique('inventory', 'material_name')->ignore($item->inventory_id, 'inventory_id')],
-            'edit_quantity' => ['required', 'numeric', 'min:0', 'max:999999999', 'decimal:0,3'],
-            'edit_unit' => ['required', 'string', 'max:30'],
-            'edit_status' => ['required', Rule::in($this->statuses())],
-        ]);
-
-        $inventoryService->updateMaterial($item, [
-            'material_name' => $validated['edit_material_name'],
-            'quantity' => $validated['edit_quantity'],
-            'unit' => $validated['edit_unit'],
-            'status' => $validated['edit_status'],
-        ]);
-
-        $this->successMessage = "{$validated['edit_material_name']} was updated.";
-        $this->editingId = null;
+        unset($this->deduct[$inventoryId]);
         $this->reload();
     }
 
@@ -178,14 +147,6 @@ new #[Title('Staff Inventory')] class extends Component
         $this->reload();
     }
 
-    /**
-     * @return list<string>
-     */
-    private function statuses(): array
-    {
-        return ['available', 'reserved', 'unavailable'];
-    }
-
     private function reload(): void
     {
         $search = mb_strtolower(trim($this->search));
@@ -199,17 +160,27 @@ new #[Title('Staff Inventory')] class extends Component
 };
 ?>
 
+@php
+    $fmt = fn ($number) => rtrim(rtrim(number_format((float) $number, 3, '.', ''), '0'), '.');
+@endphp
+
 <div class="staff-inventory-page grid gap-8">
     <header class="grid gap-1">
         <h1 class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">Inventory</h1>
         <p class="text-sm leading-6 text-[var(--ps-muted)]">
             @if ($canManage)
-                Add, update, and delete materials, record incoming stock, and report low stock.
+                Add materials, record incoming stock, and deduct what was used. The status updates by itself.
             @else
-                Current materials, quantities, and status.
+                Current materials, quantities, and stock status.
             @endif
         </p>
     </header>
+
+    <div class="flex flex-wrap gap-x-6 gap-y-2 text-sm text-[var(--ps-muted)]" aria-label="Status guide">
+        <span class="inline-flex items-center gap-2"><span class="size-2.5 rounded-full bg-emerald-500"></span> In Stock (Available)</span>
+        <span class="inline-flex items-center gap-2"><span class="size-2.5 rounded-full bg-amber-500"></span> Low Stock (Requires Restock)</span>
+        <span class="inline-flex items-center gap-2"><span class="size-2.5 rounded-full bg-red-500"></span> Out of Stock (No Stock)</span>
+    </div>
 
     @if ($successMessage !== '')
         <div role="status" class="rounded-xl border border-[var(--ps-border-strong)] bg-[var(--ps-accent-soft)] px-4 py-3 text-sm font-medium text-[var(--ps-text)]">
@@ -233,7 +204,7 @@ new #[Title('Staff Inventory')] class extends Component
                     @error('material_name') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
                 </div>
                 <div class="grid gap-1">
-                    <label for="quantity" class="text-sm font-medium text-[var(--ps-text)]">Quantity</label>
+                    <label for="quantity" class="text-sm font-medium text-[var(--ps-text)]">Starting quantity</label>
                     <input id="quantity" type="number" min="0" step="0.001" wire:model="quantity" class="ps-input" required>
                     @error('quantity') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
                 </div>
@@ -243,18 +214,15 @@ new #[Title('Staff Inventory')] class extends Component
                     @error('unit') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
                 </div>
                 <div class="grid gap-1">
-                    <label for="status" class="text-sm font-medium text-[var(--ps-text)]">Status</label>
-                    <select id="status" wire:model="status" class="ps-input">
-                        <option value="available">Available</option>
-                        <option value="reserved">Reserved</option>
-                        <option value="unavailable">Unavailable</option>
-                    </select>
-                    @error('status') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+                    <label for="low_stock_level" class="text-sm font-medium text-[var(--ps-text)]">Low-stock level</label>
+                    <input id="low_stock_level" type="number" min="0" step="0.001" wire:model="low_stock_level" class="ps-input" required>
+                    @error('low_stock_level') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
                 </div>
                 <div class="md:col-span-2 xl:col-span-1 xl:pt-6">
                     <button type="submit" class="ps-button-primary w-full" wire:loading.attr="disabled" wire:target="createMaterial">Add</button>
                 </div>
             </form>
+            <p class="text-xs leading-5 text-[var(--ps-muted)]">Low Stock shows when the quantity reaches the low-stock level or below. Out of Stock shows at 0.</p>
         </section>
     @endif
 
@@ -266,75 +234,62 @@ new #[Title('Staff Inventory')] class extends Component
 
         <ul class="divide-y divide-[var(--ps-border)]">
             @forelse ($inventory as $item)
+                @php $state = $item->stockStatus(); @endphp
                 <li wire:key="inventory-item-{{ $item->inventory_id }}" class="grid gap-4 px-5 py-4 sm:px-6">
-                    @if ($canManage && $editingId === $item->inventory_id)
-                        <form wire:submit="saveEdit" class="grid gap-4 md:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_1fr_auto] xl:items-start">
-                            <div class="grid gap-1">
-                                <label class="text-sm font-medium text-[var(--ps-text)]" for="edit_material_name">Material name</label>
-                                <input id="edit_material_name" type="text" wire:model="edit_material_name" class="ps-input" maxlength="150" required>
-                                @error('edit_material_name') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-                            </div>
-                            <div class="grid gap-1">
-                                <label class="text-sm font-medium text-[var(--ps-text)]" for="edit_quantity">Quantity</label>
-                                <input id="edit_quantity" type="number" min="0" step="0.001" wire:model="edit_quantity" class="ps-input" required>
-                                @error('edit_quantity') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-                            </div>
-                            <div class="grid gap-1">
-                                <label class="text-sm font-medium text-[var(--ps-text)]" for="edit_unit">Unit</label>
-                                <input id="edit_unit" type="text" wire:model="edit_unit" class="ps-input" maxlength="30" required>
-                                @error('edit_unit') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-                            </div>
-                            <div class="grid gap-1">
-                                <label class="text-sm font-medium text-[var(--ps-text)]" for="edit_status">Status</label>
-                                <select id="edit_status" wire:model="edit_status" class="ps-input">
-                                    <option value="available">Available</option>
-                                    <option value="reserved">Reserved</option>
-                                    <option value="unavailable">Unavailable</option>
-                                    @if (! in_array($edit_status, ['available', 'reserved', 'unavailable'], true))
-                                        <option value="{{ $edit_status }}">{{ str($edit_status)->replace('_', ' ')->title() }}</option>
-                                    @endif
-                                </select>
-                                @error('edit_status') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-                            </div>
-                            <div class="flex gap-2 xl:pt-6">
-                                <button type="submit" class="ps-button-primary" wire:loading.attr="disabled" wire:target="saveEdit">Save</button>
-                                <button type="button" wire:click="cancelEdit" class="ps-button-ghost">Cancel</button>
-                            </div>
-                        </form>
-                    @else
-                        <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
+                    <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-6">
+                        <div class="grid gap-0.5">
                             <h3 class="font-medium text-[var(--ps-text)]">{{ $item->material_name }}</h3>
-                            <p class="text-sm tabular-nums text-[var(--ps-text)]">{{ $item->quantity }} {{ $item->unit }}</p>
-                            <span class="ps-status-badge w-fit">{{ str($item->status)->replace('_', ' ')->title() }}</span>
+                            <p class="text-xs text-[var(--ps-muted)]">Low-stock level: {{ $fmt($item->low_stock_level) }} {{ $item->unit }}</p>
                         </div>
+                        <p class="text-lg font-semibold tabular-nums text-[var(--ps-text)]">{{ $fmt($item->quantity) }} <span class="text-sm font-normal text-[var(--ps-muted)]">{{ $item->unit }}</span></p>
+                        <span @class([
+                            'ps-status-badge inline-flex w-fit items-center gap-2',
+                            'text-emerald-500' => $state === 'in_stock',
+                            'text-amber-500' => $state === 'low_stock',
+                            'text-red-500' => $state === 'out_of_stock',
+                        ])>
+                            <span @class([
+                                'inline-block size-2.5 rounded-full',
+                                'bg-emerald-500' => $state === 'in_stock',
+                                'bg-amber-500' => $state === 'low_stock',
+                                'bg-red-500' => $state === 'out_of_stock',
+                            ])></span>
+                            {{ $item->stockStatusLabel() }}
+                        </span>
+                    </div>
 
-                        @if ($canManage)
-                            <div class="grid gap-3 border-t border-[var(--ps-border)] pt-4 lg:grid-cols-[1fr_1fr_auto] lg:items-start">
-                                <div class="grid gap-1">
-                                    <div class="flex gap-2">
-                                        <input type="number" min="0" step="0.001" wire:model="stockAdd.{{ $item->inventory_id }}" class="ps-input" placeholder="Quantity to add" aria-label="Quantity to add to {{ $item->material_name }}">
-                                        <button type="button" wire:click="addStock({{ $item->inventory_id }})" wire:loading.attr="disabled" class="ps-button-secondary shrink-0">Add stock</button>
-                                    </div>
-                                    @error("stockAdd.{$item->inventory_id}") <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-                                </div>
-                                <div class="grid gap-1">
-                                    <div class="flex gap-2">
-                                        <input type="text" wire:model="alertRemarks.{{ $item->inventory_id }}" class="ps-input" placeholder="Remarks (optional)" aria-label="Low-stock remarks for {{ $item->material_name }}">
-                                        <button type="button" wire:click="reportLowStock({{ $item->inventory_id }})" wire:loading.attr="disabled" class="ps-button-secondary shrink-0">Low stock</button>
-                                    </div>
-                                    @error("alertRemarks.{$item->inventory_id}") <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-                                </div>
+                    @if ($canManage)
+                        <div class="grid gap-3 border-t border-[var(--ps-border)] pt-4 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-start">
+                            <div class="grid gap-1">
                                 <div class="flex gap-2">
-                                    <button type="button" wire:click="startEdit({{ $item->inventory_id }})" class="ps-button-ghost">Edit</button>
-                                    <button
-                                        type="button"
-                                        wire:click="deleteMaterial({{ $item->inventory_id }})"
-                                        wire:confirm="Delete {{ $item->material_name }}? This cannot be undone."
-                                        class="ps-button-ghost text-red-500"
-                                    >Delete</button>
+                                    <input type="number" min="0" step="0.001" wire:model="stockAdd.{{ $item->inventory_id }}" class="ps-input" placeholder="How many to add" aria-label="Quantity to add to {{ $item->material_name }}">
+                                    <button type="button" wire:click="addStock({{ $item->inventory_id }})" wire:loading.attr="disabled" class="ps-button-secondary shrink-0">Add stock</button>
                                 </div>
+                                @error("stockAdd.{$item->inventory_id}") <p class="text-sm text-red-500">{{ $message }}</p> @enderror
                             </div>
-                        @endif
+                            <div class="grid gap-1">
+                                <div class="flex gap-2">
+                                    <input type="number" min="0" step="0.001" wire:model="deduct.{{ $item->inventory_id }}" class="ps-input" placeholder="How many to deduct" aria-label="Quantity to deduct from {{ $item->material_name }}">
+                                    <button type="button" wire:click="deductStock({{ $item->inventory_id }})" wire:loading.attr="disabled" class="ps-button-primary shrink-0">Deduct</button>
+                                </div>
+                                @error("deduct.{$item->inventory_id}") <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+                            </div>
+                            <div class="grid gap-1">
+                                <div class="flex gap-2">
+                                    <input type="text" wire:model="alertRemarks.{{ $item->inventory_id }}" class="ps-input" placeholder="Remarks (optional)" aria-label="Low-stock remarks for {{ $item->material_name }}">
+                                    <button type="button" wire:click="reportLowStock({{ $item->inventory_id }})" wire:loading.attr="disabled" class="ps-button-secondary shrink-0">Report low</button>
+                                </div>
+                                @error("alertRemarks.{$item->inventory_id}") <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+                            </div>
+                            <div>
+                                <button
+                                    type="button"
+                                    wire:click="deleteMaterial({{ $item->inventory_id }})"
+                                    wire:confirm="Delete {{ $item->material_name }}? This cannot be undone."
+                                    class="ps-button-ghost text-red-500"
+                                >Delete</button>
+                            </div>
+                        </div>
                     @endif
                 </li>
             @empty

@@ -14,24 +14,29 @@ use Illuminate\Validation\ValidationException;
 class InventoryService
 {
     /**
-     * Create a new inventory material.
+     * Create a new inventory material. Its status is worked out from the quantity.
      *
-     * @param  array{material_name: string, quantity: string, unit: string, status: string}  $attributes
+     * @param  array{material_name: string, quantity: string, unit: string, low_stock_level?: string}  $attributes
      */
     public function createMaterial(array $attributes): Inventory
     {
-        return Inventory::create([
+        $inventory = new Inventory([
             'material_name' => $attributes['material_name'],
             'quantity' => $attributes['quantity'],
             'unit' => $attributes['unit'],
-            'status' => $attributes['status'],
+            'low_stock_level' => $attributes['low_stock_level'] ?? '10',
         ]);
+
+        $inventory->status = $inventory->stockStatus();
+        $inventory->save();
+
+        return $inventory;
     }
 
     /**
-     * Update an inventory material's name, quantity, unit, and status.
+     * Update an inventory material. Its status is worked out from the quantity.
      *
-     * @param  array{material_name: string, quantity: string, unit: string, status: string}  $attributes
+     * @param  array{material_name: string, quantity: string, unit: string}  $attributes
      */
     public function updateMaterial(Inventory $inventory, array $attributes): Inventory
     {
@@ -39,8 +44,10 @@ class InventoryService
             'material_name' => $attributes['material_name'],
             'quantity' => $attributes['quantity'],
             'unit' => $attributes['unit'],
-            'status' => $attributes['status'],
-        ])->save();
+        ]);
+
+        $inventory->status = $inventory->stockStatus();
+        $inventory->save();
 
         return $inventory;
     }
@@ -52,7 +59,7 @@ class InventoryService
     {
         if ($inventory->stockIns()->exists() || $inventory->alerts()->exists()) {
             throw ValidationException::withMessages([
-                'inventory' => 'This material has stock-in or low-stock records and cannot be deleted. Set its status to unavailable instead.',
+                'inventory' => 'This material has stock or alert records and cannot be deleted. Deduct its remaining stock instead.',
             ]);
         }
 
@@ -70,6 +77,8 @@ class InventoryService
     ): StockIn {
         return DB::transaction(function () use ($inventory, $staff, $quantityAdded, $dateAdded): StockIn {
             $inventory->increment('quantity', $quantityAdded);
+            $inventory->refresh();
+            $inventory->forceFill(['status' => $inventory->stockStatus()])->save();
 
             return StockIn::create([
                 'inventory_id' => $inventory->inventory_id,
@@ -77,6 +86,47 @@ class InventoryService
                 'quantity_added' => $quantityAdded,
                 'date_added' => $dateAdded ?? now(),
             ]);
+        });
+    }
+
+    /**
+     * Deduct stock that was used. Records a low-stock alert automatically when the
+     * material drops into Low Stock or Out of Stock.
+     *
+     * @throws ValidationException when more than the remaining quantity is deducted
+     */
+    public function deductStock(Inventory $inventory, User $staff, string $quantity): Inventory
+    {
+        return DB::transaction(function () use ($inventory, $staff, $quantity): Inventory {
+            $locked = Inventory::query()
+                ->lockForUpdate()
+                ->findOrFail($inventory->inventory_id);
+
+            if (round((float) $locked->quantity - (float) $quantity, 3) < 0) {
+                throw ValidationException::withMessages([
+                    'deduct' => "Only {$this->plain($locked->quantity)} {$locked->unit} left, so you cannot deduct {$this->plain($quantity)}.",
+                ]);
+            }
+
+            $before = $locked->stockStatus();
+
+            $locked->decrement('quantity', $quantity);
+            $locked->refresh();
+
+            $after = $locked->stockStatus();
+            $locked->forceFill(['status' => $after])->save();
+
+            if ($after !== Inventory::STATUS_IN_STOCK && $after !== $before) {
+                $this->createLowStockAlert(
+                    $locked,
+                    $staff,
+                    $after === Inventory::STATUS_OUT_OF_STOCK
+                        ? 'Automatic alert: out of stock after a deduction.'
+                        : "Automatic alert: stock fell to {$this->plain($locked->quantity)} {$locked->unit}.",
+                );
+            }
+
+            return $locked;
         });
     }
 
@@ -138,5 +188,13 @@ class InventoryService
                 ->where('alert_type', 'low_stock')
                 ->count(),
         ];
+    }
+
+    /**
+     * Show a quantity without trailing zeros (12.000 becomes 12).
+     */
+    private function plain(string|float $number): string
+    {
+        return rtrim(rtrim(number_format((float) $number, 3, '.', ''), '0'), '.');
     }
 }

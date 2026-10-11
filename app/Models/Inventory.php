@@ -13,14 +13,51 @@ use Illuminate\Support\Carbon;
  * @property string $material_name
  * @property string $quantity
  * @property string $unit
+ * @property string $low_stock_level
  * @property string $status
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
 #[Table(name: 'inventory', key: 'inventory_id')]
-#[Fillable(['material_name', 'quantity', 'unit', 'status'])]
+#[Fillable(['material_name', 'quantity', 'unit', 'low_stock_level', 'status'])]
 class Inventory extends Model
 {
+    public const STATUS_IN_STOCK = 'in_stock';
+
+    public const STATUS_LOW_STOCK = 'low_stock';
+
+    public const STATUS_OUT_OF_STOCK = 'out_of_stock';
+
+    /**
+     * Work out the stock status from the current quantity.
+     */
+    public function stockStatus(): string
+    {
+        $quantity = (float) $this->quantity;
+
+        if ($quantity <= 0) {
+            return self::STATUS_OUT_OF_STOCK;
+        }
+
+        if ($quantity <= (float) $this->low_stock_level) {
+            return self::STATUS_LOW_STOCK;
+        }
+
+        return self::STATUS_IN_STOCK;
+    }
+
+    /**
+     * The label shown next to the status indicator.
+     */
+    public function stockStatusLabel(): string
+    {
+        return match ($this->stockStatus()) {
+            self::STATUS_OUT_OF_STOCK => 'Out of Stock (No Stock)',
+            self::STATUS_LOW_STOCK => 'Low Stock (Requires Restock)',
+            default => 'In Stock (Available)',
+        };
+    }
+
     /**
      * Get the stock-in records for this inventory item.
      */
@@ -46,6 +83,7 @@ class Inventory extends Model
     {
         return [
             'quantity' => 'decimal:3',
+            'low_stock_level' => 'decimal:3',
         ];
     }
 }
