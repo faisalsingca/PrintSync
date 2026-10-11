@@ -127,7 +127,18 @@ class PaymentService
 
         return self::STATUS_PARTIAL;
     }
-
+    /**
+     * Staff may only work on an order once at least a partial payment is recorded.
+     * Orders without a confirmed total, or with no payment, are not ready.
+     */
+    public function isReadyForProduction(Order $order): bool
+    {
+        return in_array(
+            $this->getPaymentStatus($order),
+            [self::STATUS_PARTIAL, self::STATUS_PAID],
+            true,
+        );
+    }
     /**
      * Retrieve payments recorded for an order.
      *

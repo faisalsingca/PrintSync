@@ -161,7 +161,12 @@ new #[Title('Staff Orders')] class extends Component
                             </div>
                         </div>
                         <div class="flex items-center justify-between gap-3 sm:justify-end">
-                            <span class="ps-status-badge">{{ OrderStatus::labelFor($order->status) }}</span>
+                            <span class="flex flex-wrap items-center gap-2">
+                                @if (! app(\App\Services\PaymentService::class)->isReadyForProduction($order))
+                                    <span class="ps-status-badge text-amber-500">Awaiting payment</span>
+                                @endif
+                                <span class="ps-status-badge">{{ OrderStatus::labelFor($order->status) }}</span>
+                            </span>
                             <span class="text-sm font-medium text-[var(--ps-accent)]">Details <span aria-hidden="true">→</span></span>
                         </div>
                     </a>

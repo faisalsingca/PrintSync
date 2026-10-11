@@ -81,6 +81,12 @@ class OrderService
                 throw new AuthorizationException;
             }
 
+            if (! app(PaymentService::class)->isReadyForProduction($lockedOrder)) {
+                throw ValidationException::withMessages([
+                    'status' => 'This order is awaiting payment. Production can start once the cashier records at least a partial payment.',
+                ]);
+            }
+
             $currentStatus = OrderStatus::tryFrom($lockedOrder->status);
 
             if ($currentStatus?->next() !== $status) {

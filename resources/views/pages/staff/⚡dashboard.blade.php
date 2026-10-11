@@ -105,7 +105,12 @@ new #[Title('Staff Dashboard')] class extends Component
                             <h3 class="font-medium text-[var(--ps-text)]">Order #{{ $order->order_id }} <span class="font-normal capitalize text-[var(--ps-muted)]">— {{ $order->order_type }}</span></h3>
                             <p class="text-sm text-[var(--ps-muted)]">{{ $order->customer->name }} · {{ $order->order_date->format('M j, Y') }}</p>
                         </div>
-                        <span class="ps-status-badge w-fit">{{ OrderStatus::labelFor($order->status) }}</span>
+                        <span class="flex flex-wrap items-center gap-2">
+                            @if (! app(\App\Services\PaymentService::class)->isReadyForProduction($order))
+                                <span class="ps-status-badge w-fit text-amber-500">Awaiting payment</span>
+                            @endif
+                            <span class="ps-status-badge w-fit">{{ OrderStatus::labelFor($order->status) }}</span>
+                        </span>
                     </a>
                 </li>
             @empty

@@ -3,6 +3,7 @@
 use App\Models\Order;
 use App\OrderStatus;
 use App\Services\OrderService;
+use App\Services\PaymentService;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -15,11 +16,22 @@ new #[Title('Order Details')] class extends Component
 
     public string $statusMessage = '';
 
-    public function mount(Order $order): void
+    public ?string $paymentStatus = null;
+
+    public bool $paymentCleared = false;
+
+    public function mount(Order $order, PaymentService $paymentService): void
     {
         Gate::authorize('view', $order);
 
         $this->order = $order->load('customer');
+        $this->refreshPayment($paymentService);
+    }
+
+    public function checkPayment(PaymentService $paymentService): void
+    {
+        $this->order = Order::query()->with('customer')->findOrFail($this->order->order_id);
+        $this->refreshPayment($paymentService);
     }
 
     public function updateProductionStatus(string $status, OrderService $orderService): void
@@ -38,6 +50,13 @@ new #[Title('Order Details')] class extends Component
             OrderStatus::from($status),
         )->load('customer');
         $this->statusMessage = 'Order status updated to '.OrderStatus::from($status)->label().'.';
+        $this->refreshPayment(app(PaymentService::class));
+    }
+
+    private function refreshPayment(PaymentService $paymentService): void
+    {
+        $this->paymentStatus = $paymentService->getPaymentStatus($this->order);
+        $this->paymentCleared = $paymentService->isReadyForProduction($this->order);
     }
 };
 ?>
@@ -80,6 +99,18 @@ new #[Title('Order Details')] class extends Component
                 <dt class="text-sm text-[var(--ps-muted)]">Submitted</dt>
                 <dd class="font-medium text-[var(--ps-text)]">{{ $order->order_date->format('M j, Y \a\t g:i A') }}</dd>
             </div>
+            <div class="grid gap-1">
+                <dt class="text-sm text-[var(--ps-muted)]">Payment</dt>
+                <dd>
+                    <span @class([
+                        'ps-status-badge w-fit',
+                        'text-emerald-500' => $paymentStatus === 'paid',
+                        'text-amber-500' => $paymentStatus === 'partial' || $paymentStatus === 'unpaid' || $paymentStatus === null,
+                    ])>
+                        {{ $paymentStatus === null ? 'Waiting for total' : ucfirst($paymentStatus) }}
+                    </span>
+                </dd>
+            </div>
             <div class="grid gap-1 sm:col-span-2">
                 <dt class="text-sm text-[var(--ps-muted)]">Description</dt>
                 <dd class="whitespace-pre-line text-[var(--ps-text)]">{{ $order->description ?: 'No description provided.' }}</dd>
@@ -102,7 +133,18 @@ new #[Title('Order Details')] class extends Component
                     <h2 class="font-semibold text-[var(--ps-text)]">Production Status</h2>
                     <p class="text-sm text-[var(--ps-muted)]">Advance the order through its production workflow.</p>
                 </div>
-                @if (($nextStatus = OrderStatus::tryFrom($order->status)?->next()) !== null)
+
+                @if (! $paymentCleared)
+                    <div wire:poll.10s="checkPayment" class="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-[var(--ps-text)]" role="alert">
+                        <p class="font-semibold">Locked: awaiting payment</p>
+                        <p class="mt-1 text-[var(--ps-muted)]">
+                            {{ $paymentStatus === null
+                                ? 'The cashier has not set the total or recorded a payment yet.'
+                                : 'No payment has been recorded yet.' }}
+                            Production can start once the cashier records at least a partial payment. This page updates by itself.
+                        </p>
+                    </div>
+                @elseif (($nextStatus = OrderStatus::tryFrom($order->status)?->next()) !== null)
                     <button
                         type="button"
                         wire:click="updateProductionStatus('{{ $nextStatus->value }}')"
