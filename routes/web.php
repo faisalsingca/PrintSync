@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Storage;
 
 Route::view('/', 'welcome')->name('home');
 
-Route::middleware(config('app.env') === 'local' ? ['auth'] : ['auth', 'verified'])->group(function () {
+Route::middleware(['auth'])->group(function () {
     Route::get('orders/{order}/design-file', function (Order $order) {
         Gate::authorize('viewDesignFile', $order);
 

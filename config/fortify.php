@@ -163,7 +163,6 @@ return [
     'features' => [
         Features::registration(),
         Features::resetPasswords(),
-        ...(config('app.env') === 'local' ? [] : [Features::emailVerification()]),
         Features::twoFactorAuthentication([
             'confirm' => true,
             'confirmPassword' => true,
