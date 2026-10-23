@@ -11,16 +11,11 @@ use App\StaffSpecialtyType;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class OrderService
 {
-    public function createWalkInOrder()
-    {
-        // TODO: implement walk-in order creation.
-    }
-
     /**
      * Retrieve counts grouped by each order's current status.
      *
@@ -40,7 +35,7 @@ class OrderService
             ])
             ->all();
     }
-    
+
     /**
      * Create an order from validated attributes.
      *
@@ -49,6 +44,32 @@ class OrderService
     public function createOrder(array $attributes): Order
     {
         return Order::create($attributes);
+    }
+
+    /**
+     * Create an order for a customer who ordered in person (no account).
+     * A placeholder customer record keeps every existing order page working.
+     *
+     * @param  array{order_type: string, service_line: string, description?: ?string, quantity: int}  $attributes
+     */
+    public function createWalkInOrder(string $customerName, array $attributes): Order
+    {
+        return DB::transaction(function () use ($customerName, $attributes): Order {
+            $customer = User::create([
+                'name' => $customerName.' (walk-in)',
+                'email' => 'walk-in-'.Str::uuid().'@walkin.printsync.local',
+                'password' => Str::random(40),
+                'role' => 'customer',
+            ]);
+            $customer->forceFill(['email_verified_at' => now()])->save();
+
+            return $this->createOrder([
+                ...$attributes,
+                'customer_id' => $customer->id,
+                'order_date' => now(),
+                'status' => 'pending',
+            ]);
+        });
     }
 
     /**
@@ -395,7 +416,8 @@ class OrderService
      * when the order has no valid service line, already has an active assignment, or
      * no eligible staff member exists yet.
      */
-    public function autoAssignOrder(Order $order): ?OrderAssignment  {
+    public function autoAssignOrder(Order $order): ?OrderAssignment
+    {
         $serviceLine = is_string($order->service_line)
             ? OrderServiceLine::tryFrom($order->service_line)
             : null;
@@ -487,6 +509,7 @@ class OrderService
             ->with('customer')
             ->get();
     }
+
     /**
      * The service lines a staff member can work on, based on their specialties.
      *
@@ -514,6 +537,7 @@ class OrderService
 
         return in_array($order->service_line, $this->serviceLinesFor($staff), true);
     }
+
     /**
      * @return list<string>
      */

@@ -65,7 +65,8 @@ test('inventory seeding adds sample materials once and preserves existing stock'
         'material_name' => 'Copy Paper 80 gsm',
         'quantity' => '2.500',
         'unit' => 'box',
-        'status' => 'reserved',
+        // The seeder keeps the stock but refreshes the status from the quantity (2.5 is below the level of 3).
+        'status' => 'low_stock',
     ]);
     $this->assertDatabaseHas('inventory', [
         'inventory_id' => $unrelatedInventory->inventory_id,

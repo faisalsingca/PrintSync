@@ -2,8 +2,12 @@
 
 use App\Models\Order;
 use App\Models\OrderAssignment;
+use App\Models\StaffSpecialty;
 use App\Models\User;
+use App\OrderServiceLine;
 use App\OrderStatus;
+use App\Services\PaymentService;
+use App\StaffSpecialtyType;
 use Illuminate\Support\Carbon;
 use Livewire\Livewire;
 
@@ -13,6 +17,7 @@ function createStaffOrderManagementOrder(User $customer, array $attributes = [])
         'customer_id' => $customer->id,
         'order_date' => Carbon::parse('2026-10-08 10:15:00'),
         'order_type' => 'business cards',
+        'service_line' => OrderServiceLine::GraphicDesign->value,
         'description' => 'Matte finish',
         'quantity' => 250,
         'status' => 'pending',
@@ -27,39 +32,55 @@ function assignStaffOrderManagementOrder(Order $order, User $staff): void
     ]);
 }
 
-test('staff dashboard counts only orders assigned to the authenticated staff member by current status', function () {
+function prepareStaffOrderManagementOrderForProduction(Order $order): void
+{
+    $order->forceFill(['confirmed_total' => '250.00'])->save();
+
+    (new PaymentService)->recordPayment(
+        $order,
+        User::factory()->create(['role' => 'cashier']),
+        'cash',
+        '1.00',
+        Carbon::parse('2026-10-08 10:30:00'),
+    );
+}
+
+test('staff dashboard counts orders matching the authenticated staff member specialty by current status', function () {
     $staff = User::factory()->create(['role' => 'staff']);
-    $anotherStaff = User::factory()->create(['role' => 'staff']);
     $customer = User::factory()->create(['role' => 'customer']);
+    StaffSpecialty::query()->create([
+        'staff_id' => $staff->id,
+        'specialty' => StaffSpecialtyType::GraphicDesigner->value,
+    ]);
     $pendingOrder = createStaffOrderManagementOrder($customer, ['status' => 'pending']);
     $processingOrder = createStaffOrderManagementOrder($customer, ['status' => 'processing']);
-    $otherStaffOrder = createStaffOrderManagementOrder($customer, ['status' => 'completed']);
-    assignStaffOrderManagementOrder($pendingOrder, $staff);
-    assignStaffOrderManagementOrder($processingOrder, $staff);
-    assignStaffOrderManagementOrder($otherStaffOrder, $anotherStaff);
-
+    createStaffOrderManagementOrder($customer, [
+        'service_line' => OrderServiceLine::BookBinding->value,
+        'status' => 'completed',
+    ]);
     $this->actingAs($staff)
         ->get(route('staff.dashboard'))
         ->assertOk()
         ->assertSeeInOrder(['Assigned Orders', '2', 'Pending', '1', 'In Progress', '1', 'Ready for Pickup', '0', 'Completed', '0']);
 });
 
-test('staff orders page shows only assigned orders with customer and order summary', function () {
+test('staff orders page shows only orders matching the staff specialty with customer and order summary', function () {
     $staff = User::factory()->create(['role' => 'staff']);
-    $anotherStaff = User::factory()->create(['role' => 'staff']);
     $customer = User::factory()->create(['role' => 'customer', 'name' => 'Assigned Customer']);
     $anotherCustomer = User::factory()->create(['role' => 'customer', 'name' => 'Other Customer']);
+    StaffSpecialty::query()->create([
+        'staff_id' => $staff->id,
+        'specialty' => StaffSpecialtyType::GraphicDesigner->value,
+    ]);
     $assignedOrder = createStaffOrderManagementOrder($customer, [
         'order_type' => 'custom flyers',
         'quantity' => 500,
         'status' => 'processing',
     ]);
-    $otherStaffOrder = createStaffOrderManagementOrder($anotherCustomer, [
+    createStaffOrderManagementOrder($anotherCustomer, [
         'order_type' => 'private order type',
+        'service_line' => OrderServiceLine::BookBinding->value,
     ]);
-    assignStaffOrderManagementOrder($assignedOrder, $staff);
-    assignStaffOrderManagementOrder($otherStaffOrder, $anotherStaff);
-
     $this->actingAs($staff)
         ->get(route('staff.orders'))
         ->assertOk()
@@ -126,6 +147,7 @@ test('assigned staff can advance an order through each production status', funct
     $staff = User::factory()->create(['role' => 'staff']);
     $customer = User::factory()->create(['role' => 'customer']);
     $order = createStaffOrderManagementOrder($customer);
+    prepareStaffOrderManagementOrderForProduction($order);
     assignStaffOrderManagementOrder($order, $staff);
     $this->actingAs($staff);
 
@@ -161,7 +183,7 @@ test('assigned staff can advance an order through each production status', funct
         ->assertSee('Completed');
 
     $this->actingAs(User::factory()->create(['role' => 'owner']))
-        ->get(route('owner.monitoring'))
+        ->get(route('owner.orders-status'))
         ->assertOk()
         ->assertSee('Completed');
 });
@@ -170,6 +192,7 @@ test('assigned staff cannot skip or reverse a production status', function (stri
     $staff = User::factory()->create(['role' => 'staff']);
     $customer = User::factory()->create(['role' => 'customer']);
     $order = createStaffOrderManagementOrder($customer, ['status' => $currentStatus]);
+    prepareStaffOrderManagementOrderForProduction($order);
     assignStaffOrderManagementOrder($order, $staff);
     $this->actingAs($staff);
 

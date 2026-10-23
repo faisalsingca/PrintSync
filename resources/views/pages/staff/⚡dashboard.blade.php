@@ -48,7 +48,8 @@ new #[Title('Staff Dashboard')] class extends Component
             </p>
         </div>
     </section>
-@if (auth()->user()->canReportLowStock())
+
+    @if (auth()->user()->canReportLowStock())
     <a href="{{ route('staff.inventory') }}" wire:navigate class="ps-glass flex flex-wrap items-center justify-between gap-3 p-5 transition-colors hover:border-[var(--ps-border-strong)]">
         <span class="grid gap-1">
             <span class="font-medium text-[var(--ps-text)]">Running low on a material?</span>
@@ -56,7 +57,8 @@ new #[Title('Staff Dashboard')] class extends Component
         </span>
         <span class="ps-button-secondary">Report low stock <span aria-hidden="true">→</span></span>
     </a>
-@endif
+    @endif
+
     <section class="grid grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] gap-4" aria-label="Assigned order counts by current status">
         <a href="{{ route('staff.orders') }}" wire:navigate class="ps-glass grid gap-3 p-5 transition-colors hover:border-[var(--ps-border-strong)]">
             <h2 class="text-sm font-medium text-[var(--ps-muted)]">Assigned Orders</h2>
@@ -91,9 +93,9 @@ new #[Title('Staff Dashboard')] class extends Component
                         </div>
                         <span class="flex flex-wrap items-center gap-2">
                             @if (! app(\App\Services\PaymentService::class)->isReadyForProduction($order))
-                                <span class="ps-status-badge w-fit text-amber-500">Awaiting payment</span>
+                                <x-status-badge tone="warning" label="Awaiting payment" />
                             @endif
-                            <span class="ps-status-badge w-fit">{{ OrderStatus::labelFor($order->status) }}</span>
+                            <x-status-badge :tone="OrderStatus::toneFor($order->status)" :label="OrderStatus::labelFor($order->status)" />
                         </span>
                     </a>
                 </li>

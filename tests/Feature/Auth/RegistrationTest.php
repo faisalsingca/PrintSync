@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\User;
-use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Support\Facades\Notification;
 use Laravel\Fortify\Features;
 
@@ -37,9 +36,7 @@ test('public registration always assigns the customer role', function () {
 
     $user = User::where('email', 'test@example.com')->firstOrFail();
 
-    if (app()->environment('local')) {
-        Notification::assertNothingSent();
-    } else {
-        Notification::assertSentTo($user, VerifyEmail::class);
-    }
+    // New accounts are treated as verified straight away, so no verification email is sent.
+    expect($user->hasVerifiedEmail())->toBeTrue();
+    Notification::assertNothingSent();
 });

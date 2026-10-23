@@ -126,7 +126,7 @@ new #[Title('Customer Dashboard')] class extends Component
                             <div class="grid gap-1.5">
                                 <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
                                     <h3 class="font-semibold capitalize text-[var(--ps-text)]">{{ $order->order_type }}</h3>
-                                    <span class="ps-status-badge">{{ str($order->status)->replace('_', ' ')->title() }}</span>
+                                    <x-status-badge :tone="\App\OrderStatus::toneFor($order->status)" :label="\App\OrderStatus::labelFor($order->status)" />
                                 </div>
                                 <p class="text-sm text-[var(--ps-muted)]">
                                     {{ number_format($order->quantity) }} {{ str('copy')->plural($order->quantity) }}

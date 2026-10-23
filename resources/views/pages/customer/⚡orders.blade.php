@@ -64,7 +64,7 @@ new #[Title('Customer Orders')] class extends Component
                                 </div>
                             </div>
                             <div class="flex items-center justify-between gap-3 sm:justify-end">
-                                <span class="ps-status-badge">{{ OrderStatus::labelFor($order->status) }}</span>
+                                <x-status-badge :tone="OrderStatus::toneFor($order->status)" :label="OrderStatus::labelFor($order->status)" />
                                 <span class="text-sm font-medium text-[var(--ps-accent)]">Details <span aria-hidden="true">→</span></span>
                             </div>
                         </a>

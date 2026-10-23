@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Auth\LoginOtpController;
 use App\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -9,7 +10,7 @@ use Illuminate\Support\Facades\Storage;
 Route::view('/', 'welcome')->name('home');
 
 Route::middleware(['auth'])->group(function () {
-    Route::get('orders/{order}/design-file', function (Order $order) {
+    Route::get('orders/{order}/design-file', function (Request $request, Order $order) {
         Gate::authorize('viewDesignFile', $order);
 
         $path = $order->design_file;
@@ -29,10 +30,29 @@ Route::middleware(['auth'])->group(function () {
 
         $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
 
+        $headers = [
+            'X-Content-Type-Options' => 'nosniff',
+            'Cache-Control' => 'private, no-store',
+        ];
+
+        $isStaff = $request->user()->role === 'staff';
+
+        // Staff only see the design as a preview on the order page. Opening the file link
+        // directly (a page of its own, where "Save as" is offered) is refused for them.
+        if ($isStaff && $request->header('Sec-Fetch-Dest') === 'document') {
+            abort(403, 'Design files can only be previewed on the order page.');
+        }
+
+        if ($isStaff || $request->boolean('inline')) {
+            return response()->file($disk->path($path), $headers + [
+                'Content-Disposition' => "inline; filename=\"order-{$order->order_id}-design.{$extension}\"",
+            ]);
+        }
+
         return $disk->download(
             $path,
             "order-{$order->order_id}-design.{$extension}",
-            ['X-Content-Type-Options' => 'nosniff'],
+            $headers,
         );
     })->name('orders.design-file');
 
@@ -78,14 +98,26 @@ Route::middleware(['auth'])->group(function () {
         Route::livewire('cashier/dashboard', 'pages::cashier.dashboard')
             ->name('cashier.dashboard');
 
+        Route::livewire('cashier/walk-in-orders/create', 'pages::cashier.create-walk-in-order')
+            ->name('cashier.walk-in.create');
+
         Route::livewire('cashier/payments', 'pages::cashier.payments')
             ->name('cashier.payments');
+
+        Route::livewire('cashier/payment-records', 'pages::cashier.payments')
+            ->name('cashier.payment-records');
 
         Route::livewire('cashier/inventory', 'pages::cashier.inventory')
             ->name('cashier.inventory');
 
-        Route::livewire('cashier/walk-in-orders/create', 'pages::cashier.create-walk-in-order')
-            ->name('cashier.walk-in.create');
+        Route::livewire('cashier/inventory/create', 'pages::cashier.inventory-add')
+            ->name('cashier.inventory.create');
+
+        Route::livewire('cashier/inventory/archive', 'pages::cashier.inventory-archive')
+            ->name('cashier.inventory.archive');
+
+        Route::livewire('cashier/low-stock-reports', 'pages::cashier.low-stock-reports')
+            ->name('cashier.low-stock-reports');
     });
 
     Route::middleware('role:owner')->group(function () {
@@ -95,13 +127,34 @@ Route::middleware(['auth'])->group(function () {
         Route::livewire('owner/monitoring', 'pages::owner.monitoring')
             ->name('owner.monitoring');
 
+        Route::livewire('owner/orders-status', 'pages::owner.orders-status')
+            ->name('owner.orders-status');
+
+        Route::livewire('owner/routing', 'pages::owner.routing')
+            ->name('owner.routing');
+
+        Route::livewire('owner/specialties', 'pages::owner.specialties')
+            ->name('owner.specialties');
+
+        Route::livewire('owner/inventory', 'pages::owner.inventory')
+            ->name('owner.inventory');
+
+        Route::livewire('owner/low-stock', 'pages::owner.low-stock')
+            ->name('owner.low-stock');
+
+        Route::livewire('owner/payments', 'pages::owner.payments')
+            ->name('owner.payments');
+
+        Route::livewire('owner/audit-logs', 'pages::owner.audit-logs')
+            ->name('owner.audit-logs');
+
         Route::livewire('owner/orders/{order}', 'pages::staff.order-details')
             ->name('owner.orders.show');
     });
 });
 Route::middleware(['guest', 'throttle:20,1'])->group(function () {
-    Route::get('login/verify', [\App\Http\Controllers\Auth\LoginOtpController::class, 'show'])->name('otp.show');
-    Route::post('login/verify', [\App\Http\Controllers\Auth\LoginOtpController::class, 'verify'])->name('otp.verify');
-    Route::post('login/verify/resend', [\App\Http\Controllers\Auth\LoginOtpController::class, 'resend'])->name('otp.resend');
+    Route::get('login/verify', [LoginOtpController::class, 'show'])->name('otp.show');
+    Route::post('login/verify', [LoginOtpController::class, 'verify'])->name('otp.verify');
+    Route::post('login/verify/resend', [LoginOtpController::class, 'resend'])->name('otp.resend');
 });
 require __DIR__.'/settings.php';

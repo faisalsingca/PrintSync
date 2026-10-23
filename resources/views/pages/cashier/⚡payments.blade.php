@@ -49,9 +49,19 @@ new #[Title('Cashier Payments')] class extends Component
 
     public string $statusFilter = '';
 
+    // 'manage' = Manage Payments page, 'records' = Payment Records page (same component, two routes)
+    public string $view = 'manage';
+
     public function mount(): void
     {
         Gate::authorize('viewAny', Payment::class);
+
+        $this->view = request()->routeIs('cashier.payment-records') ? 'records' : 'manage';
+
+        // Payment Records links here with ?order=ID to record a payment for that order.
+        if ($this->view === 'manage' && request()->filled('order')) {
+            $this->order_id = (int) request()->query('order');
+        }
 
         $this->refreshOrders();
         $this->payment_date = now()->format('Y-m-d\TH:i');
@@ -232,8 +242,14 @@ new #[Title('Cashier Payments')] class extends Component
 
 <div class="cashier-payments-page grid gap-8">
     <header class="grid gap-1">
-        <h1 class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">Payment Management</h1>
-        <p class="text-sm leading-6 text-[var(--ps-muted)]">Set each order's total, record what the customer pays (in full or in parts), and track what is still owed.</p>
+        <h1 class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">{{ $view === 'records' ? 'Payment Records' : 'Manage Payments' }}</h1>
+        <p class="text-sm leading-6 text-[var(--ps-muted)]">
+            @if ($view === 'records')
+                Every order that has a total, with what was paid and what is still owed.
+            @else
+                Set each order's total and record what the customer pays, in full or in parts.
+            @endif
+        </p>
     </header>
 
     @if (session('status'))
@@ -242,6 +258,7 @@ new #[Title('Cashier Payments')] class extends Component
         </div>
     @endif
 
+    @if ($view === 'manage')
     <section class="ps-glass grid gap-6 p-5 sm:p-8" aria-labelledby="record-payment-heading">
         <div class="grid gap-1">
             <h2 id="record-payment-heading" class="text-xl font-semibold text-[var(--ps-text)]">Set Total &amp; Record Payment</h2>
@@ -294,7 +311,13 @@ new #[Title('Cashier Payments')] class extends Component
                     </div>
                     <div class="rounded-2xl border border-[var(--ps-border)] bg-[var(--ps-surface)] p-4">
                         <p class="text-xs font-medium uppercase tracking-[0.12em] text-[var(--ps-muted)]">Payment status</p>
-                        <p class="mt-2 text-2xl font-semibold text-[var(--ps-text)]">{{ $selectedOrderFinancialStatus ?? 'Unpaid' }}</p>
+                        <div class="mt-2">
+                            @php $financial = strtolower($selectedOrderFinancialStatus ?? 'unpaid'); @endphp
+                            <x-status-badge
+                                :tone="match ($financial) { 'paid' => 'success', 'partial' => 'warning', default => 'danger' }"
+                                :label="match ($financial) { 'paid' => 'Paid', 'partial' => 'Partially paid', default => 'Unpaid' }"
+                            />
+                        </div>
                     </div>
                 </div>
             @endif
@@ -380,7 +403,9 @@ new #[Title('Cashier Payments')] class extends Component
             </form>
         @endif
     </section>
+    @endif
 
+    @if ($view === 'records')
     <section class="ps-glass overflow-hidden" aria-labelledby="payment-records-heading">
         <header class="grid gap-4 border-b border-[var(--ps-border)] px-5 py-5 sm:px-6">
             <div class="grid gap-1">
@@ -435,12 +460,10 @@ new #[Title('Cashier Payments')] class extends Component
                             <p class="text-xs uppercase tracking-wide text-[var(--ps-muted)]">Balance</p>
                             <p class="font-semibold tabular-nums text-[var(--ps-text)]">{{ $row['balance'] }}</p>
                         </div>
-                        <span @class([
-                            'ps-status-badge w-fit',
-                            'text-emerald-500' => $row['status'] === 'paid',
-                            'text-amber-500' => $row['status'] === 'partial',
-                            'text-red-500' => $row['status'] === 'unpaid',
-                        ])>{{ ucfirst($row['status']) }}</span>
+                        <x-status-badge
+                            :tone="match ($row['status']) { 'paid' => 'success', 'partial' => 'warning', default => 'danger' }"
+                            :label="match ($row['status']) { 'paid' => 'Paid', 'partial' => 'Partially paid', default => 'Unpaid' }"
+                        />
                     </div>
 
                     @if ($recordOrder->payments->isNotEmpty())
@@ -460,22 +483,18 @@ new #[Title('Cashier Payments')] class extends Component
 
                     @if ($row['status'] !== 'paid')
                         <div>
-                            <button
-                                type="button"
-                                wire:click="selectOrder({{ $recordOrder->order_id }})"
-                                x-on:click="document.getElementById('record-payment-heading').scrollIntoView({ behavior: 'smooth' })"
-                                class="ps-button-ghost"
-                            >
+                            <a href="{{ route('cashier.payments', ['order' => $recordOrder->order_id]) }}" wire:navigate class="ps-button-secondary">
                                 Record payment for this order
-                            </button>
+                            </a>
                         </div>
                     @endif
                 </li>
             @empty
                 <li class="px-5 py-8 text-sm text-[var(--ps-muted)]">
-                    {{ $search !== '' || $statusFilter !== '' ? 'No payment records match your search.' : 'No orders have a total yet. Set a total above to start tracking payments.' }}
+                    {{ $search !== '' || $statusFilter !== '' ? 'No payment records match your search.' : 'No orders have a total yet. Set a total on the Manage Payments page to start tracking payments.' }}
                 </li>
             @endforelse
         </ul>
     </section>
+    @endif
 </div>

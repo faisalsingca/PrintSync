@@ -12,8 +12,12 @@
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
     --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
 
-    --color-ps-lime: #b8f34a;
-    --color-ps-lime-dark: #85b934;
+    --color-ps-lime: #4cf000;
+    --color-ps-lime-dark: #2fb000;
+    --color-ps-yellow: #f0f000;
+    --color-ps-orange: #ff5a00;
+    --color-ps-purple: #b02ee8;
+    --color-ps-blue: #2a2af0;
     --color-ps-ink: #10130d;
     --color-ps-mist: #f3f5f0;
 
@@ -29,9 +33,9 @@
     --color-zinc-900: #171717;
     --color-zinc-950: #0a0a0a;
 
-    --color-accent: var(--color-neutral-800);
-    --color-accent-content: var(--color-neutral-800);
-    --color-accent-foreground: var(--color-white);
+    --color-accent: #4cf000;
+    --color-accent-content: #1a7f00;
+    --color-accent-foreground: #0b1a00;
 }
 
 @layer theme {
@@ -44,11 +48,14 @@
         --ps-text: #172016;
         --ps-muted: #657061;
         --ps-border: rgb(30 48 27 / 11%);
-        --ps-border-strong: rgb(30 48 27 / 17%);
-        --ps-accent: #4f751a;
-        --ps-accent-soft: rgb(184 243 74 / 19%);
+        --ps-border-strong: rgb(18 90 0 / 32%);
+        --ps-brand: #4cf000;
+        --ps-brand-hover: #3bd800;
+        --ps-on-brand: #0b1a00;
+        --ps-accent: #1a7f00;
+        --ps-accent-soft: rgb(76 240 0 / 14%);
         --ps-shadow: 0 22px 60px rgb(33 48 26 / 9%);
-        --ps-focus: #628f23;
+        --ps-focus: #7a1fd6;
     }
 
     :root.dark {
@@ -60,15 +67,18 @@
         --ps-text: #f1f5ec;
         --ps-muted: #9aa394;
         --ps-border: rgb(236 247 229 / 9%);
-        --ps-border-strong: rgb(184 243 74 / 18%);
-        --ps-accent: #b8f34a;
-        --ps-accent-soft: rgb(184 243 74 / 12%);
+        --ps-border-strong: rgb(76 240 0 / 30%);
+        --ps-brand: #4cf000;
+        --ps-brand-hover: #6bff2e;
+        --ps-on-brand: #0b1a00;
+        --ps-accent: #62ff2b;
+        --ps-accent-soft: rgb(76 240 0 / 13%);
         --ps-shadow: 0 24px 70px rgb(0 0 0 / 34%);
-        --ps-focus: #b8f34a;
+        --ps-focus: #d08cff;
 
-        --color-accent: var(--color-white);
-        --color-accent-content: var(--color-white);
-        --color-accent-foreground: var(--color-neutral-800);
+        --color-accent: #4cf000;
+        --color-accent-content: #62ff2b;
+        --color-accent-foreground: #0b1a00;
     }
 }
 
@@ -107,7 +117,7 @@
 input:focus[data-flux-control],
 textarea:focus[data-flux-control],
 select:focus[data-flux-control] {
-    @apply outline-hidden ring-2 ring-accent ring-offset-2 ring-offset-accent-foreground;
+    @apply outline-hidden ring-2 ring-[var(--ps-focus)] ring-offset-2 ring-offset-[var(--ps-surface)];
 }
 
 .ps-app-shell {
@@ -116,8 +126,8 @@ select:focus[data-flux-control] {
     min-height: 100vh;
     overflow-x: clip;
     background:
-        radial-gradient(ellipse at 72% 7%, rgb(184 243 74 / 8%), transparent 27rem),
-        radial-gradient(ellipse at 8% 82%, rgb(93 137 50 / 7%), transparent 32rem),
+        radial-gradient(ellipse at 72% 7%, rgb(76 240 0 / 8%), transparent 27rem),
+        radial-gradient(ellipse at 8% 82%, rgb(42 42 240 / 7%), transparent 32rem),
         var(--ps-background);
     color: var(--ps-text);
     transition: background-color 220ms ease, color 220ms ease;
@@ -145,9 +155,9 @@ select:focus[data-flux-control] {
 .ps-atmosphere::before {
     top: 8%;
     background:
-        linear-gradient(90deg, transparent 14%, rgb(184 243 74 / 0%) 31%, rgb(184 243 74 / 65%) 49%, rgb(184 243 74 / 0%) 52%, transparent 74%) 0 0 / 100% 1px no-repeat,
-        linear-gradient(90deg, transparent 22%, rgb(184 243 74 / 0%) 39%, rgb(184 243 74 / 30%) 51%, rgb(184 243 74 / 0%) 54%, transparent 78%) 0 5.5rem / 100% 1px no-repeat,
-        linear-gradient(90deg, transparent 10%, rgb(184 243 74 / 0%) 34%, rgb(184 243 74 / 36%) 48%, rgb(184 243 74 / 0%) 50%, transparent 70%) 0 12rem / 100% 1px no-repeat;
+        linear-gradient(90deg, transparent 14%, rgb(76 240 0 / 0%) 31%, rgb(76 240 0 / 65%) 49%, rgb(76 240 0 / 0%) 52%, transparent 74%) 0 0 / 100% 1px no-repeat,
+        linear-gradient(90deg, transparent 22%, rgb(76 240 0 / 0%) 39%, rgb(76 240 0 / 30%) 51%, rgb(76 240 0 / 0%) 54%, transparent 78%) 0 5.5rem / 100% 1px no-repeat,
+        linear-gradient(90deg, transparent 10%, rgb(76 240 0 / 0%) 34%, rgb(76 240 0 / 36%) 48%, rgb(76 240 0 / 0%) 50%, transparent 70%) 0 12rem / 100% 1px no-repeat;
     animation: ps-stream-drift 34s ease-in-out infinite alternate;
 }
 
@@ -381,20 +391,26 @@ select:focus[data-flux-control] {
 }
 
 .ps-button-primary {
-    border: 1px solid transparent;
-    background: var(--ps-accent);
-    color: #10150b;
-    box-shadow: 0 5px 20px rgb(184 243 74 / 13%);
+    border: 1px solid rgb(18 110 0 / 60%);
+    background: var(--ps-brand);
+    color: var(--ps-on-brand);
+    box-shadow: 0 2px 0 rgb(18 110 0 / 35%), 0 6px 18px rgb(76 240 0 / 28%);
 }
 
 .ps-button-primary:hover {
     transform: translateY(-1px);
-    box-shadow: 0 8px 26px rgb(184 243 74 / 19%);
+    background: var(--ps-brand-hover);
+    box-shadow: 0 3px 0 rgb(18 110 0 / 35%), 0 10px 24px rgb(76 240 0 / 36%);
+}
+
+.ps-button-primary:active {
+    transform: translateY(1px);
+    box-shadow: 0 0 0 rgb(18 110 0 / 35%);
 }
 
 .ps-button-secondary {
-    border: 1px solid var(--ps-border-strong);
-    background: var(--ps-glass);
+    border: 1.5px solid var(--ps-border-strong);
+    background: var(--ps-surface);
     color: var(--ps-text);
 }
 
@@ -408,7 +424,14 @@ select:focus[data-flux-control] {
 .ps-theme-toggle {
     border: 1px solid transparent;
     background: transparent;
-    color: var(--ps-muted);
+    color: var(--ps-accent);
+}
+
+.ps-button-primary:disabled,
+.ps-button-secondary:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+    transform: none;
 }
 
 .ps-status-badge {
@@ -465,6 +488,15 @@ select:focus[data-flux-control] {
     color: var(--ps-accent);
 }
 
+.ps-brand-logo {
+    width: 2.5rem;
+    height: 2.5rem;
+    flex: none;
+    border-radius: 9999px;
+    object-fit: cover;
+    box-shadow: 0 0 0 2px var(--ps-brand), 0 4px 14px rgb(76 240 0 / 25%);
+}
+
 .ps-brand-mark {
     position: relative;
     display: grid;
@@ -472,14 +504,14 @@ select:focus[data-flux-control] {
     width: 2.1rem;
     place-items: center;
     overflow: hidden;
-    border: 1px solid rgb(184 243 74 / 35%);
+    border: 1px solid rgb(76 240 0 / 35%);
     border-radius: 0.65rem;
-    background: linear-gradient(145deg, rgb(184 243 74 / 22%), rgb(184 243 74 / 5%));
+    background: linear-gradient(145deg, rgb(76 240 0 / 22%), rgb(76 240 0 / 5%));
     color: var(--ps-accent);
     font-size: 0.76rem;
     font-weight: 800;
     letter-spacing: -0.08em;
-    box-shadow: inset 0 0 18px rgb(184 243 74 / 9%);
+    box-shadow: inset 0 0 18px rgb(76 240 0 / 9%);
 }
 
 .ps-brand-mark::after {

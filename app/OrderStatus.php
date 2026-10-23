@@ -19,6 +19,19 @@ enum OrderStatus: string
         };
     }
 
+    /**
+     * The color tone used by the status badge.
+     */
+    public function tone(): string
+    {
+        return match ($this) {
+            self::Pending => 'warning',
+            self::InProgress => 'progress',
+            self::ReadyForPickup => 'info',
+            self::Completed => 'success',
+        };
+    }
+
     public function next(): ?self
     {
         return match ($this) {
@@ -27,6 +40,11 @@ enum OrderStatus: string
             self::ReadyForPickup => self::Completed,
             self::Completed => null,
         };
+    }
+
+    public static function toneFor(string $status): string
+    {
+        return self::tryFrom($status)?->tone() ?? 'neutral';
     }
 
     public static function labelFor(string $status): string

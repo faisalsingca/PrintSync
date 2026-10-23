@@ -5,7 +5,6 @@
         'customer' => [
             ['Dashboard', 'home', route('customer.dashboard'), request()->routeIs('customer.dashboard')],
             ['Create New Order', 'plus-circle', route('customer.orders.create'), request()->routeIs('customer.orders.create')],
-            ['Recent Orders', 'clock', route('customer.dashboard').'#recent-orders-heading', false],
             ['All Orders', 'queue-list', route('customer.orders'), request()->routeIs('customer.orders', 'customer.orders.show')],
         ],
         'staff' => array_values(array_filter([
@@ -18,20 +17,23 @@
         'cashier' => [
             ['Dashboard', 'home', route('cashier.dashboard'), request()->routeIs('cashier.dashboard')],
             ['Walk-in Order', 'plus-circle', route('cashier.walk-in.create'), request()->routeIs('cashier.walk-in.create')],
-            ['Manage Payments', 'banknotes', route('cashier.payments').'#record-payment-heading', false],
-            ['Payment Records', 'document-text', route('cashier.payments').'#payment-records-heading', false],
+            ['Manage Payments', 'banknotes', route('cashier.payments'), request()->routeIs('cashier.payments')],
+            ['Payment Records', 'document-text', route('cashier.payment-records'), request()->routeIs('cashier.payment-records')],
             ['Inventory', 'cube', route('cashier.inventory'), request()->routeIs('cashier.inventory')],
-            ['Low-Stock Reports', 'exclamation-triangle', route('cashier.inventory').'#low-stock-reports-heading', false],
+            ['Add Material', 'plus', route('cashier.inventory.create'), request()->routeIs('cashier.inventory.create')],
+            ['Low-Stock Reports', 'exclamation-triangle', route('cashier.low-stock-reports'), request()->routeIs('cashier.low-stock-reports')],
+            ['Archived Materials', 'archive-box', route('cashier.inventory.archive'), request()->routeIs('cashier.inventory.archive')],
         ],
         'owner' => [
             ['Dashboard', 'home', route('owner.dashboard'), request()->routeIs('owner.dashboard')],
-            ['Orders by Current Status', 'chart-bar', route('owner.dashboard').'#owner-order-status-heading', false],
             ['Business Monitoring', 'presentation-chart-line', route('owner.monitoring'), request()->routeIs('owner.monitoring')],
-            ['Order Routing', 'arrows-right-left', route('owner.monitoring').'#owner-routing-heading', false],
-            ['Staff Service Specialties', 'users', route('owner.monitoring').'#owner-specialties-heading', false],
-            ['Inventory Materials', 'cube', route('owner.monitoring').'#owner-inventory-heading', false],
-            ['Low-Stock Alerts', 'exclamation-triangle', route('owner.monitoring').'#owner-low-stock-heading', false],
-            ['Saved Payments', 'banknotes', route('owner.monitoring').'#owner-payments-heading', false],
+            ['Orders by Status', 'chart-bar', route('owner.orders-status'), request()->routeIs('owner.orders-status')],
+            ['Order Routing', 'arrows-right-left', route('owner.routing'), request()->routeIs('owner.routing')],
+            ['Staff Specialties', 'users', route('owner.specialties'), request()->routeIs('owner.specialties')],
+            ['Inventory Materials', 'cube', route('owner.inventory'), request()->routeIs('owner.inventory')],
+            ['Low-Stock Alerts', 'exclamation-triangle', route('owner.low-stock'), request()->routeIs('owner.low-stock')],
+            ['Saved Payments', 'banknotes', route('owner.payments'), request()->routeIs('owner.payments')],
+            ['Audit Log', 'shield-check', route('owner.audit-logs'), request()->routeIs('owner.audit-logs')],
         ],
         default => [],
     };
@@ -40,7 +42,7 @@
 <aside id="ps-rail" class="ps-rail" x-bind:data-open="railOpen ? '' : null" aria-label="Main navigation">
     <div class="ps-rail-brand">
         <a href="{{ route('dashboard') }}" wire:navigate class="flex items-center gap-3">
-            <span class="ps-brand-mark" aria-hidden="true">PS</span>
+            <img src="{{ asset('images/rpg-prints-logo.png') }}" alt="RPG Prints" class="ps-brand-logo">
             <span>PrintSync</span>
         </a>
         <button type="button" class="ms-auto lg:hidden" x-on:click="railOpen = false" aria-label="Close navigation menu">

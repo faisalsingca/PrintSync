@@ -75,7 +75,7 @@ test('owner dashboard shows current status groups, saved totals, inventory summa
         ->assertOk()
         ->assertSee('Orders by Current Status')
         ->assertSee('Pending')
-        ->assertSee('Processing')
+        ->assertSee('In Progress')
         ->assertSee('Inventory Materials')
         ->assertSee('Recorded Low-Stock Alerts')
         ->assertSee('Saved Payments')
@@ -95,7 +95,7 @@ test('owner dashboard shows current status groups, saved totals, inventory summa
         ->assertSet('orderCount', 2);
 });
 
-test('owner monitoring displays current inventory, recorded alerts, order groups, and saved payment records', function () {
+test('owner monitoring is a hub and each module has its own page', function () {
     $owner = User::factory()->create(['role' => 'owner']);
     $customer = User::factory()->create(['role' => 'customer']);
     $cashier = User::factory()->create(['role' => 'cashier']);
@@ -120,23 +120,36 @@ test('owner monitoring displays current inventory, recorded alerts, order groups
     $this->actingAs($owner)
         ->get(route('owner.monitoring'))
         ->assertOk()
-        ->assertSee('Orders by Current Status')
-        ->assertSee('In Progress')
+        ->assertSee('Business Monitoring')
+        ->assertSee(route('owner.inventory'), false)
+        ->assertSee(route('owner.audit-logs'), false);
+
+    $this->get(route('owner.orders-status'))
+        ->assertOk()
+        ->assertSee('Orders by Status')
+        ->assertSee('In Progress');
+
+    $this->get(route('owner.inventory'))
+        ->assertOk()
         ->assertSee('Inventory Materials')
         ->assertSee('Alerted cardstock')
-        ->assertSee('0.250 ream')
+        ->assertSee('0.25 ream')
         ->assertSee('Unalerted paper')
-        ->assertSee('0.001 ream')
-        ->assertSee('Recorded Low-Stock Alerts')
+        ->assertSee('0.001 ream');
+
+    $this->get(route('owner.low-stock'))
+        ->assertOk()
+        ->assertSee('Low-Stock Alerts')
         ->assertSee('Staff noted low stock.')
-        ->assertSee('Oct 8, 2026 3:00 PM')
+        ->assertSee('Oct 8, 2026 3:00 PM');
+
+    $this->get(route('owner.payments'))
+        ->assertOk()
         ->assertSee('Saved Payments')
         ->assertSee('75.50')
         ->assertSee('GCash')
-        ->assertSee('Order #'.$order->order_id)
-        ->assertSee(route('owner.dashboard'), false);
+        ->assertSee('Order #'.$order->order_id);
 
-    $this->assertDatabaseCount('inventory_alerts', 1);
     $this->assertDatabaseCount('payments', 1);
 });
 

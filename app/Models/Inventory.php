@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
@@ -15,6 +16,7 @@ use Illuminate\Support\Carbon;
  * @property string $unit
  * @property string $low_stock_level
  * @property string $status
+ * @property Carbon|null $archived_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -27,6 +29,31 @@ class Inventory extends Model
     public const STATUS_LOW_STOCK = 'low_stock';
 
     public const STATUS_OUT_OF_STOCK = 'out_of_stock';
+
+    /**
+     * Materials that are in use (not archived).
+     *
+     * @param  Builder<Inventory>  $query
+     */
+    public function scopeActive(Builder $query): void
+    {
+        $query->whereNull('archived_at');
+    }
+
+    /**
+     * Materials that were archived.
+     *
+     * @param  Builder<Inventory>  $query
+     */
+    public function scopeArchived(Builder $query): void
+    {
+        $query->whereNotNull('archived_at');
+    }
+
+    public function isArchived(): bool
+    {
+        return $this->archived_at !== null;
+    }
 
     /**
      * Work out the stock status from the current quantity.
@@ -44,6 +71,18 @@ class Inventory extends Model
         }
 
         return self::STATUS_IN_STOCK;
+    }
+
+    /**
+     * The badge tone for the current stock status (success, warning or danger).
+     */
+    public function stockStatusTone(): string
+    {
+        return match ($this->stockStatus()) {
+            self::STATUS_OUT_OF_STOCK => 'danger',
+            self::STATUS_LOW_STOCK => 'warning',
+            default => 'success',
+        };
     }
 
     /**
@@ -84,6 +123,7 @@ class Inventory extends Model
         return [
             'quantity' => 'decimal:3',
             'low_stock_level' => 'decimal:3',
+            'archived_at' => 'datetime',
         ];
     }
 }

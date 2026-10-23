@@ -10,8 +10,8 @@ use Illuminate\Support\Carbon;
 $livewirePagesByRole = [
     'customer' => ['customer.dashboard', 'customer.orders', 'customer.orders.create'],
     'staff' => ['staff.dashboard', 'staff.orders', 'staff.inventory'],
-    'cashier' => ['cashier.dashboard', 'cashier.payments', 'cashier.inventory'],
-    'owner' => ['owner.dashboard', 'owner.monitoring'],
+    'cashier' => ['cashier.dashboard', 'cashier.payments', 'cashier.payment-records', 'cashier.inventory', 'cashier.inventory.create', 'cashier.inventory.archive', 'cashier.low-stock-reports'],
+    'owner' => ['owner.dashboard', 'owner.monitoring', 'owner.orders-status', 'owner.routing', 'owner.specialties', 'owner.inventory', 'owner.low-stock', 'owner.payments', 'owner.audit-logs'],
 ];
 
 $allLivewireRoles = array_keys($livewirePagesByRole);
@@ -50,7 +50,6 @@ test('each role can access its own Livewire pages', function (string $role, stri
     'staff inventory' => ['staff', 'staff.inventory'],
     'cashier dashboard' => ['cashier', 'cashier.dashboard'],
     'cashier payments' => ['cashier', 'cashier.payments'],
-    'cashier inventory' => ['cashier', 'cashier.inventory'],
     'owner dashboard' => ['owner', 'owner.dashboard'],
     'owner monitoring' => ['owner', 'owner.monitoring'],
 ]);
@@ -96,7 +95,7 @@ test('staff inventory page retrieves inventory through InventoryService', functi
         ->assertSee('Staff visible paper');
 });
 
-test('cashier payments page shows only payments recorded by the authenticated cashier', function () {
+test('cashier payment records page lists payments from every cashier', function () {
     $customer = User::factory()->create(['role' => 'customer']);
     $cashier = User::factory()->create(['role' => 'cashier']);
     $anotherCashier = User::factory()->create(['role' => 'cashier']);
@@ -126,13 +125,13 @@ test('cashier payments page shows only payments recorded by the authenticated ca
     );
 
     $this->actingAs($cashier)
-        ->get(route('cashier.payments'))
+        ->get(route('cashier.payment-records'))
         ->assertOk()
         ->assertSee('183.74')
-        ->assertDontSee('927.36');
+        ->assertSee('927.36');
 });
 
-test('owner monitoring displays saved order inventory and payment information', function () {
+test('owner module pages display saved order inventory and payment information', function () {
     $owner = User::factory()->create(['role' => 'owner']);
     $customer = User::factory()->create(['role' => 'customer']);
     $cashier = User::factory()->create(['role' => 'cashier']);
@@ -152,11 +151,17 @@ test('owner monitoring displays saved order inventory and payment information', 
     ]);
 
     $this->actingAs($owner)
-        ->get(route('owner.monitoring'))
+        ->get(route('owner.orders-status'))
         ->assertOk()
-        ->assertSee('Pending')
+        ->assertSee('Pending');
+
+    $this->get(route('owner.inventory'))
+        ->assertOk()
         ->assertSee('Monitoring inventory')
-        ->assertSee('4.000 ream')
+        ->assertSee('4 ream');
+
+    $this->get(route('owner.payments'))
+        ->assertOk()
         ->assertSee('Cash')
         ->assertSee('50.00');
 });

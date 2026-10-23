@@ -96,7 +96,7 @@ new #[Title('Owner Dashboard')] class extends Component
             <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 @foreach ($orderStatusCounts as $statusCount)
                     <article wire:key="owner-dashboard-status-{{ $statusCount['status'] }}" class="ps-glass flex items-center justify-between gap-3 p-5">
-                        <h3 class="ps-status-badge">{{ str($statusCount['status'])->replace('_', ' ')->title() }}</h3>
+                        <h3><x-status-badge :tone="\App\OrderStatus::toneFor($statusCount['status'])" :label="\App\OrderStatus::labelFor($statusCount['status'])" /></h3>
                         <p class="text-2xl font-semibold tabular-nums text-[var(--ps-text)]">{{ number_format($statusCount['count']) }}</p>
                     </article>
                 @endforeach

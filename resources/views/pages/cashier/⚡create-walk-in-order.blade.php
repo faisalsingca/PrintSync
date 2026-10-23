@@ -45,7 +45,7 @@ new #[Title('Walk-in Order')] class extends Component
             'quantity' => (int) $validated['quantity'],
         ]);
 
-        $this->successMessage = "Walk-in order #{$order->order_id} was created for {$validated['customer_name']}. Set the total and record the payment on the Payments page.";
+        $this->successMessage = "Walk-in order #{$order->order_id} was created for {$validated['customer_name']}. Set the total and record the payment on the Manage Payments page.";
         $this->reset('customer_name', 'service_line', 'description');
         $this->quantity = 1;
     }
@@ -53,57 +53,52 @@ new #[Title('Walk-in Order')] class extends Component
 ?>
 
 <div class="cashier-walk-in-page grid gap-8">
-    <section class="relative isolate overflow-hidden rounded-[1.6rem] border border-[var(--ps-border-strong)] bg-[radial-gradient(ellipse_at_82%_8%,rgb(184_243_74/13%),transparent_42%),var(--ps-glass)] px-6 py-8 shadow-[var(--ps-shadow)] sm:px-9 sm:py-10">
-        <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-            <div class="grid gap-2">
-                <span class="inline-flex w-fit rounded-full border border-[var(--ps-border-strong)] bg-[var(--ps-accent-soft)] px-3 py-1 text-xs font-semibold tracking-wide text-[var(--ps-accent)]">
-                    CASHIER WORKSPACE
-                </span>
-                <h1 class="text-3xl font-semibold tracking-[-0.045em] text-[var(--ps-text)] sm:text-4xl">Walk-in Order</h1>
-                <p class="max-w-xl text-sm leading-6 text-[var(--ps-muted)]">
-                    For customers who order in person and have no account. The order starts as pending and goes to the team member who handles the service.
-                </p>
-            </div>
-            <a href="{{ route('cashier.payments') }}" wire:navigate class="ps-button-ghost w-fit">Go to payments</a>
+    <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div class="grid gap-1">
+            <h1 class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">Walk-in Order</h1>
+            <p class="max-w-xl text-sm leading-6 text-[var(--ps-muted)]">
+                For customers who order in person and have no account. The order starts as pending and goes to the staff who handle that service.
+            </p>
         </div>
-    </section>
+        <a href="{{ route('cashier.payments') }}" wire:navigate class="ps-button-secondary w-fit">Go to payments</a>
+    </header>
 
     @if ($successMessage !== '')
-        <div role="status" class="rounded-xl border border-[var(--ps-border-strong)] bg-[var(--ps-accent-soft)] px-4 py-3 text-sm font-medium text-[var(--ps-text)]">
-            {{ $successMessage }}
+        <div role="status" class="flex items-start gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-[var(--ps-text)]">
+            <span aria-hidden="true" class="font-bold text-emerald-500">✓</span> {{ $successMessage }}
         </div>
     @endif
 
     <form wire:submit="createWalkInOrder" class="ps-glass grid gap-7 p-5 sm:p-8">
         <div class="grid gap-6 md:grid-cols-2">
-            <flux:field class="md:col-span-2">
-                <flux:label for="customer_name">Customer name</flux:label>
-                <flux:input id="customer_name" wire:model="customer_name" type="text" maxlength="100" required />
-                <flux:error name="customer_name" />
-            </flux:field>
+            <div class="grid gap-1 md:col-span-2">
+                <label for="customer_name" class="text-sm font-medium text-[var(--ps-text)]">Customer name</label>
+                <input id="customer_name" type="text" wire:model="customer_name" class="ps-input" maxlength="100" required>
+                @error('customer_name') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+            </div>
 
-            <flux:field>
-                <flux:label for="service_line">Order type</flux:label>
+            <div class="grid gap-1">
+                <label for="service_line" class="text-sm font-medium text-[var(--ps-text)]">Order type</label>
                 <select id="service_line" wire:model="service_line" class="ps-input" required>
                     <option value="">Select an order type</option>
                     @foreach (OrderServiceLine::cases() as $serviceLine)
                         <option value="{{ $serviceLine->value }}">{{ $serviceLine->label() }}</option>
                     @endforeach
                 </select>
-                <flux:error name="service_line" />
-            </flux:field>
+                @error('service_line') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+            </div>
 
-            <flux:field>
-                <flux:label for="quantity">Quantity (pieces)</flux:label>
-                <flux:input id="quantity" wire:model="quantity" type="number" min="1" step="1" required />
-                <flux:error name="quantity" />
-            </flux:field>
+            <div class="grid gap-1">
+                <label for="quantity" class="text-sm font-medium text-[var(--ps-text)]">Quantity (pieces)</label>
+                <input id="quantity" type="number" min="1" step="1" wire:model="quantity" class="ps-input" required>
+                @error('quantity') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+            </div>
 
-            <flux:field class="md:col-span-2">
-                <flux:label for="description">Description <span class="font-normal text-[var(--ps-muted)]">(optional)</span></flux:label>
-                <flux:textarea id="description" wire:model="description" rows="4" placeholder="Sizes, paper, finishing, or other instructions." />
-                <flux:error name="description" />
-            </flux:field>
+            <div class="grid gap-1 md:col-span-2">
+                <label for="description" class="text-sm font-medium text-[var(--ps-text)]">Description <span class="font-normal text-[var(--ps-muted)]">(optional)</span></label>
+                <textarea id="description" wire:model="description" rows="4" class="ps-input" placeholder="Sizes, paper, finishing, or other instructions."></textarea>
+                @error('description') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+            </div>
         </div>
 
         <div class="flex justify-end border-t border-[var(--ps-border)] pt-5">

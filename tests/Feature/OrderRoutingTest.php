@@ -199,7 +199,7 @@ test('owners can update specialties while other roles cannot access routing cont
     $staff = User::factory()->create(['role' => 'staff']);
     $this->actingAs($owner);
 
-    Livewire::test('pages::owner.monitoring')
+    Livewire::test('pages::owner.specialties')
         ->set("staffSpecialtySelections.{$staff->id}", ['book_binder'])
         ->call('updateStaffSpecialties', $staff->id)
         ->assertHasNoErrors()
@@ -212,6 +212,6 @@ test('owners can update specialties while other roles cannot access routing cont
 
     $this->actingAs(User::factory()->create(['role' => 'staff']));
 
-    Livewire::test('pages::owner.monitoring')
+    Livewire::test('pages::owner.specialties')
         ->assertForbidden();
 });

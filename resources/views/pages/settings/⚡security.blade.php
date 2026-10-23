@@ -182,6 +182,7 @@ new #[Title('Security settings')] class extends Component {
                 viewable
             />
             <flux:input
+                id="security-password"
                 wire:model="password"
                 :label="__('New password')"
                 type="password"
@@ -190,7 +191,10 @@ new #[Title('Security settings')] class extends Component {
                 passwordrules="{{ \Illuminate\Validation\Rules\Password::defaults()->toPasswordRulesString() }}"
                 viewable
             />
+            <x-password-checklist for="security-password" confirm="security-password-confirmation" />
+
             <flux:input
+                id="security-password-confirmation"
                 wire:model="password_confirmation"
                 :label="__('Confirm password')"
                 type="password"

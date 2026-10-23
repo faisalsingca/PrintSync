@@ -40,37 +40,49 @@ test('customers can download their own private design file', function () {
         ->assertHeader('X-Content-Type-Options', 'nosniff');
 });
 
-test('assigned staff and owners can download a private design file', function (string $role) {
+test('owners can download a private design file', function () {
     Storage::fake('local');
     $customer = User::factory()->create(['role' => 'customer']);
     $order = createOrderAttachmentTestOrder($customer);
-    $user = User::factory()->create(['role' => $role]);
+    $owner = User::factory()->create(['role' => 'owner']);
 
-    if ($role === 'staff') {
-        OrderAssignment::create([
-            'order_id' => $order->order_id,
-            'staff_id' => $user->id,
-        ]);
-    }
-
-    $this->actingAs($user)
+    $this->actingAs($owner)
         ->get(route('orders.design-file', $order))
         ->assertOk()
         ->assertDownload("order-{$order->order_id}-design.pdf");
 
-    if ($role === 'staff') {
-        $this->get(route('staff.orders.show', $order))
-            ->assertOk()
-            ->assertSee(route('orders.design-file', $order));
-    } else {
-        $this->get(route('owner.orders.show', $order))
-            ->assertOk()
-            ->assertSee(route('orders.design-file', $order));
-    }
-})->with([
-    'assigned staff' => ['staff'],
-    'owner' => ['owner'],
-]);
+    $this->get(route('owner.orders.show', $order))
+        ->assertOk()
+        ->assertSee(route('orders.design-file', $order));
+});
+
+test('assigned staff see the design as an inline preview and cannot download it', function () {
+    Storage::fake('local');
+    $customer = User::factory()->create(['role' => 'customer']);
+    $order = createOrderAttachmentTestOrder($customer);
+    $staff = User::factory()->create(['role' => 'staff']);
+    OrderAssignment::create([
+        'order_id' => $order->order_id,
+        'staff_id' => $staff->id,
+    ]);
+
+    $this->actingAs($staff)
+        ->get(route('staff.orders.show', $order))
+        ->assertOk()
+        ->assertSee('Customer design')
+        ->assertSee(route('orders.design-file', $order), false)
+        ->assertDontSee('Download design file');
+
+    $response = $this->get(route('orders.design-file', $order))
+        ->assertOk()
+        ->assertHeader('X-Content-Type-Options', 'nosniff');
+
+    expect($response->headers->get('Content-Disposition'))->toStartWith('inline');
+
+    $this->withHeaders(['Sec-Fetch-Dest' => 'document'])
+        ->get(route('orders.design-file', $order))
+        ->assertForbidden();
+});
 
 test('customers and unassigned staff cannot download another orders design file', function (string $role) {
     Storage::fake('local');

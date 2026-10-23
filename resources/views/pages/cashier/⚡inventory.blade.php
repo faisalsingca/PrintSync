@@ -13,32 +13,33 @@ new #[Title('Cashier Inventory')] class extends Component
 {
     public Collection $inventory;
 
-    public Collection $openAlerts;
-
     public string $search = '';
-
-    // Add-material form
-    public string $material_name = '';
-
-    public string $quantity = '';
-
-    public string $unit = '';
-
-    public string $low_stock_level = '10';
 
     // Per-row inputs
     public array $stockAdd = [];
 
     public array $deduct = [];
 
+    public array $deductNote = [];
+
+    // Inline edit
+    public ?int $editingId = null;
+
+    public string $edit_name = '';
+
+    public string $edit_unit = '';
+
+    public string $edit_low_stock_level = '';
+
     public string $successMessage = '';
 
-    public string $deleteError = '';
+    public string $errorMessage = '';
 
     public function mount(): void
     {
         Gate::authorize('manage', Inventory::class);
 
+        $this->successMessage = (string) session('status', '');
         $this->reload();
     }
 
@@ -47,39 +48,27 @@ new #[Title('Cashier Inventory')] class extends Component
         $this->reload();
     }
 
-    public function createMaterial(InventoryService $inventoryService): void
-    {
-        Gate::authorize('manage', Inventory::class);
-
-        $validated = $this->validate([
-            'material_name' => ['required', 'string', 'max:150', Rule::unique('inventory', 'material_name')],
-            'quantity' => ['required', 'numeric', 'min:0', 'max:999999999', 'decimal:0,3'],
-            'unit' => ['required', 'string', 'max:30'],
-            'low_stock_level' => ['required', 'numeric', 'min:0', 'max:999999999', 'decimal:0,3'],
-        ]);
-
-        $inventoryService->createMaterial($validated);
-
-        $this->successMessage = "{$validated['material_name']} was added to inventory.";
-        $this->deleteError = '';
-        $this->reset('material_name', 'quantity', 'unit');
-        $this->low_stock_level = '10';
-        $this->reload();
-    }
-
     public function addStock(int $inventoryId, InventoryService $inventoryService): void
     {
         Gate::authorize('addStock', Inventory::class);
+        $this->clearMessages();
 
         $this->validate([
             "stockAdd.$inventoryId" => ['required', 'numeric', 'gt:0', 'max:999999999', 'decimal:0,3'],
         ], [], ["stockAdd.$inventoryId" => 'quantity to add']);
 
         $item = Inventory::query()->findOrFail($inventoryId);
-        $inventoryService->addStock($item, auth()->user(), (string) $this->stockAdd[$inventoryId]);
+
+        try {
+            $inventoryService->addStock($item, auth()->user(), (string) $this->stockAdd[$inventoryId]);
+        } catch (ValidationException $exception) {
+            $this->errorMessage = $exception->errors()['inventory'][0] ?? 'Stock could not be added.';
+            $this->reload();
+
+            return;
+        }
 
         $this->successMessage = "Stock added to {$item->material_name}.";
-        $this->deleteError = '';
         unset($this->stockAdd[$inventoryId]);
         $this->reload();
     }
@@ -87,58 +76,107 @@ new #[Title('Cashier Inventory')] class extends Component
     public function deductStock(int $inventoryId, InventoryService $inventoryService): void
     {
         Gate::authorize('manage', Inventory::class);
+        $this->clearMessages();
 
         $this->validate([
             "deduct.$inventoryId" => ['required', 'numeric', 'gt:0', 'max:999999999', 'decimal:0,3'],
+            "deductNote.$inventoryId" => ['nullable', 'string', 'max:255'],
         ], [], ["deduct.$inventoryId" => 'quantity to deduct']);
 
         $item = Inventory::query()->findOrFail($inventoryId);
 
         try {
-            $updated = $inventoryService->deductStock($item, auth()->user(), (string) $this->deduct[$inventoryId]);
+            $updated = $inventoryService->deductStock(
+                $item,
+                auth()->user(),
+                (string) $this->deduct[$inventoryId],
+                $this->deductNote[$inventoryId] ?? null,
+            );
         } catch (ValidationException $exception) {
-            $this->addError("deduct.$inventoryId", $exception->errors()['deduct'][0] ?? 'This quantity cannot be deducted.');
+            $message = $exception->errors()['deduct'][0] ?? $exception->errors()['inventory'][0] ?? 'This quantity cannot be deducted.';
+            $this->addError("deduct.$inventoryId", $message);
 
             return;
         }
 
-        $this->successMessage = "Deducted {$this->deduct[$inventoryId]} {$updated->unit} from {$updated->material_name}. Status: {$updated->stockStatusLabel()}.";
-        $this->deleteError = '';
-        unset($this->deduct[$inventoryId]);
+        $this->successMessage = "Deducted {$this->deduct[$inventoryId]} {$updated->unit} from {$updated->material_name}.";
+        unset($this->deduct[$inventoryId], $this->deductNote[$inventoryId]);
         $this->reload();
     }
 
-    public function deleteMaterial(int $inventoryId, InventoryService $inventoryService): void
+    public function startEdit(int $inventoryId): void
     {
         Gate::authorize('manage', Inventory::class);
 
-        $item = Inventory::query()->findOrFail($inventoryId);
+        $item = Inventory::query()->active()->findOrFail($inventoryId);
 
-        try {
-            $inventoryService->deleteMaterial($item);
-        } catch (ValidationException $exception) {
-            $this->deleteError = $exception->errors()['inventory'][0] ?? 'This material cannot be deleted.';
+        $this->editingId = $item->inventory_id;
+        $this->edit_name = $item->material_name;
+        $this->edit_unit = $item->unit;
+        $this->edit_low_stock_level = rtrim(rtrim(number_format((float) $item->low_stock_level, 3, '.', ''), '0'), '.');
+        $this->resetValidation();
+    }
 
-            return;
-        }
+    public function cancelEdit(): void
+    {
+        $this->editingId = null;
+        $this->resetValidation();
+    }
 
-        $this->deleteError = '';
-        $this->successMessage = "{$item->material_name} was deleted.";
+    public function saveEdit(InventoryService $inventoryService): void
+    {
+        Gate::authorize('manage', Inventory::class);
+        $this->clearMessages();
+
+        $item = Inventory::query()->active()->findOrFail($this->editingId);
+
+        $validated = $this->validate([
+            'edit_name' => ['required', 'string', 'max:150', Rule::unique('inventory', 'material_name')->ignore($item->inventory_id, 'inventory_id')],
+            'edit_unit' => ['required', 'string', 'max:30'],
+            'edit_low_stock_level' => ['required', 'numeric', 'min:0', 'max:999999999', 'decimal:0,3'],
+        ], [
+            'edit_name.unique' => 'Another material (maybe an archived one) already uses this name.',
+        ]);
+
+        $inventoryService->updateMaterial($item, [
+            'material_name' => $validated['edit_name'],
+            'unit' => $validated['edit_unit'],
+            'low_stock_level' => (string) $validated['edit_low_stock_level'],
+        ], auth()->user());
+
+        $this->successMessage = "{$validated['edit_name']} was updated.";
+        $this->editingId = null;
         $this->reload();
+    }
+
+    public function archiveMaterial(int $inventoryId, InventoryService $inventoryService): void
+    {
+        Gate::authorize('manage', Inventory::class);
+        $this->clearMessages();
+
+        $item = Inventory::query()->active()->findOrFail($inventoryId);
+
+        $inventoryService->archiveMaterial($item, auth()->user());
+
+        $this->successMessage = "{$item->material_name} was archived. You can bring it back from Archived Materials.";
+        $this->reload();
+    }
+
+    private function clearMessages(): void
+    {
+        $this->successMessage = '';
+        $this->errorMessage = '';
     }
 
     private function reload(): void
     {
-        $service = app(InventoryService::class);
         $search = mb_strtolower(trim($this->search));
 
-        $this->inventory = $service
+        $this->inventory = app(InventoryService::class)
             ->getInventoryList()
             ->when($search !== '', fn ($items) => $items
                 ->filter(fn (Inventory $item): bool => str_contains(mb_strtolower($item->material_name), $search))
                 ->values());
-
-        $this->openAlerts = $service->getOpenLowStockAlerts();
     }
 };
 ?>
@@ -148,112 +186,37 @@ new #[Title('Cashier Inventory')] class extends Component
 @endphp
 
 <div class="cashier-inventory-page grid gap-8">
-    <header class="grid gap-1">
-        <h1 class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">Inventory</h1>
-        <p class="text-sm leading-6 text-[var(--ps-muted)]">
-            Add materials, record incoming stock, and deduct what was used. The status updates by itself. Low-stock reports from staff appear below.
-        </p>
+    <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div class="grid gap-1">
+            <h1 class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">Inventory</h1>
+            <p class="text-sm leading-6 text-[var(--ps-muted)]">Add or deduct stock, edit details, or archive materials you no longer use.</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <a href="{{ route('cashier.inventory.create') }}" wire:navigate class="ps-button-primary">Add material</a>
+            <a href="{{ route('cashier.inventory.archive') }}" wire:navigate class="ps-button-secondary">Archived materials</a>
+        </div>
     </header>
 
     @if ($successMessage !== '')
-        <div role="status" class="rounded-xl border border-[var(--ps-border-strong)] bg-[var(--ps-accent-soft)] px-4 py-3 text-sm font-medium text-[var(--ps-text)]">
-            {{ $successMessage }}
+        <div role="status" class="flex items-start gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-[var(--ps-text)]">
+            <span aria-hidden="true" class="font-bold text-emerald-500">✓</span> {{ $successMessage }}
         </div>
     @endif
 
-    @if ($deleteError !== '')
-        <div role="alert" class="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-medium text-[var(--ps-text)]">
-            {{ $deleteError }}
+    @if ($errorMessage !== '')
+        <div role="alert" class="flex items-start gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-medium text-[var(--ps-text)]">
+            <span aria-hidden="true" class="font-bold text-red-500">✕</span> {{ $errorMessage }}
         </div>
     @endif
-
-    <section class="ps-glass overflow-hidden" aria-labelledby="low-stock-reports-heading">
-        <header class="grid gap-1 border-b border-[var(--ps-border)] px-5 py-5 sm:px-6">
-            <h2 id="low-stock-reports-heading" class="text-lg font-semibold text-[var(--ps-text)]">
-                Low-stock reports from staff
-                <span class="ps-status-badge ms-2 align-middle">{{ $openAlerts->count() }} open</span>
-            </h2>
-            <p class="text-sm text-[var(--ps-muted)]">A report is cleared automatically once you add stock to that material.</p>
-        </header>
-
-        <ul class="divide-y divide-[var(--ps-border)]">
-            @forelse ($openAlerts as $alert)
-                <li wire:key="open-alert-{{ $alert->alert_id }}" class="grid gap-1 px-5 py-4 sm:px-6">
-                    <h3 class="font-medium text-[var(--ps-text)]">{{ $alert->inventory->material_name }}</h3>
-                    <p class="text-sm text-[var(--ps-muted)]">
-                        Reported by {{ $alert->staff->name }}
-                        @php
-                            $specialties = $alert->staff->specialties
-                                ->map(fn ($specialty) => \App\StaffSpecialtyType::tryFrom($specialty->specialty)?->label())
-                                ->filter()
-                                ->implode(', ');
-                        @endphp
-                        @if ($specialties !== '')
-                            ({{ $specialties }})
-                        @endif
-                        <span class="px-1" aria-hidden="true">·</span>
-                        {{ $alert->alert_date->format('M j, Y g:i A') }}
-                    </p>
-                    <p class="text-sm text-[var(--ps-muted)]">
-                        Now: {{ $fmt($alert->inventory->quantity) }} {{ $alert->inventory->unit }}
-                        <span class="px-1" aria-hidden="true">·</span>
-                        {{ $alert->inventory->stockStatusLabel() }}
-                    </p>
-                    @if ($alert->remarks)
-                        <p class="text-sm text-[var(--ps-text)]">“{{ $alert->remarks }}”</p>
-                    @endif
-                </li>
-            @empty
-                <li class="px-5 py-8 text-sm text-[var(--ps-muted)]">No open low-stock reports.</li>
-            @endforelse
-        </ul>
-    </section>
-
-    <section class="ps-glass grid gap-5 p-5 sm:p-6" aria-labelledby="add-material-heading">
-        <h2 id="add-material-heading" class="text-lg font-semibold text-[var(--ps-text)]">Add material</h2>
-        <form wire:submit="createMaterial" class="grid gap-4 md:grid-cols-2 xl:grid-cols-[2fr_1fr_1fr_1fr_auto] xl:items-start">
-            <div class="grid gap-1">
-                <label for="material_name" class="text-sm font-medium text-[var(--ps-text)]">Material name</label>
-                <input id="material_name" type="text" wire:model="material_name" class="ps-input" maxlength="150" required>
-                @error('material_name') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-            </div>
-            <div class="grid gap-1">
-                <label for="quantity" class="text-sm font-medium text-[var(--ps-text)]">Starting quantity</label>
-                <input id="quantity" type="number" min="0" step="0.001" wire:model="quantity" class="ps-input" required>
-                @error('quantity') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-            </div>
-            <div class="grid gap-1">
-                <label for="unit" class="text-sm font-medium text-[var(--ps-text)]">Unit</label>
-                <input id="unit" type="text" wire:model="unit" class="ps-input" maxlength="30" placeholder="sheet, ream, roll" required>
-                @error('unit') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-            </div>
-            <div class="grid gap-1">
-                <label for="low_stock_level" class="text-sm font-medium text-[var(--ps-text)]">Low-stock level</label>
-                <input id="low_stock_level" type="number" min="0" step="0.001" wire:model="low_stock_level" class="ps-input" required>
-                @error('low_stock_level') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-            </div>
-            <div class="md:col-span-2 xl:col-span-1 xl:pt-6">
-                <button type="submit" class="ps-button-primary w-full" wire:loading.attr="disabled" wire:target="createMaterial">Add</button>
-            </div>
-        </form>
-        <p class="text-xs leading-5 text-[var(--ps-muted)]">Low Stock shows when the quantity reaches the low-stock level or below. Out of Stock shows at 0.</p>
-    </section>
-
-    <div class="flex flex-wrap gap-x-6 gap-y-2 text-sm text-[var(--ps-muted)]" aria-label="Status guide">
-        <span class="inline-flex items-center gap-2"><span class="size-2.5 rounded-full bg-emerald-500"></span> In Stock (Available)</span>
-        <span class="inline-flex items-center gap-2"><span class="size-2.5 rounded-full bg-amber-500"></span> Low Stock (Requires Restock)</span>
-        <span class="inline-flex items-center gap-2"><span class="size-2.5 rounded-full bg-red-500"></span> Out of Stock (No Stock)</span>
-    </div>
 
     <section class="ps-glass overflow-hidden" aria-labelledby="inventory-list-heading">
         <header class="flex flex-col gap-3 border-b border-[var(--ps-border)] px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-            <h2 id="inventory-list-heading" class="text-lg font-semibold text-[var(--ps-text)]">Materials</h2>
+            <h2 id="inventory-list-heading" class="text-lg font-semibold text-[var(--ps-text)]">Materials <span class="font-normal text-[var(--ps-muted)]">({{ $inventory->count() }})</span></h2>
             <input type="search" wire:model.live.debounce.300ms="search" class="ps-input sm:max-w-xs" placeholder="Search materials" aria-label="Search materials">
         </header>
 
         <ul class="divide-y divide-[var(--ps-border)]">
             @forelse ($inventory as $item)
-                @php $state = $item->stockStatus(); @endphp
                 <li wire:key="inventory-item-{{ $item->inventory_id }}" class="grid gap-4 px-5 py-4 sm:px-6">
                     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-6">
                         <div class="grid gap-0.5">
@@ -261,23 +224,34 @@ new #[Title('Cashier Inventory')] class extends Component
                             <p class="text-xs text-[var(--ps-muted)]">Low-stock level: {{ $fmt($item->low_stock_level) }} {{ $item->unit }}</p>
                         </div>
                         <p class="text-lg font-semibold tabular-nums text-[var(--ps-text)]">{{ $fmt($item->quantity) }} <span class="text-sm font-normal text-[var(--ps-muted)]">{{ $item->unit }}</span></p>
-                        <span @class([
-                            'ps-status-badge inline-flex w-fit items-center gap-2',
-                            'text-emerald-500' => $state === 'in_stock',
-                            'text-amber-500' => $state === 'low_stock',
-                            'text-red-500' => $state === 'out_of_stock',
-                        ])>
-                            <span @class([
-                                'inline-block size-2.5 rounded-full',
-                                'bg-emerald-500' => $state === 'in_stock',
-                                'bg-amber-500' => $state === 'low_stock',
-                                'bg-red-500' => $state === 'out_of_stock',
-                            ])></span>
-                            {{ $item->stockStatusLabel() }}
-                        </span>
+                        <x-status-badge :tone="$item->stockStatusTone()" :label="$item->stockStatusLabel()" />
                     </div>
 
-                    <div class="grid gap-3 border-t border-[var(--ps-border)] pt-4 lg:grid-cols-[1fr_1fr_auto] lg:items-start">
+                    @if ($editingId === $item->inventory_id)
+                        <form wire:submit="saveEdit" class="grid gap-3 rounded-xl border border-[var(--ps-border-strong)] bg-[var(--ps-surface)] p-4 md:grid-cols-[2fr_1fr_1fr_auto] md:items-start">
+                            <div class="grid gap-1">
+                                <label class="text-sm font-medium text-[var(--ps-text)]" for="edit_name_{{ $item->inventory_id }}">Material name</label>
+                                <input id="edit_name_{{ $item->inventory_id }}" type="text" wire:model="edit_name" class="ps-input" maxlength="150" required>
+                                @error('edit_name') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+                            </div>
+                            <div class="grid gap-1">
+                                <label class="text-sm font-medium text-[var(--ps-text)]" for="edit_unit_{{ $item->inventory_id }}">Unit</label>
+                                <input id="edit_unit_{{ $item->inventory_id }}" type="text" wire:model="edit_unit" class="ps-input" maxlength="30" required>
+                                @error('edit_unit') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+                            </div>
+                            <div class="grid gap-1">
+                                <label class="text-sm font-medium text-[var(--ps-text)]" for="edit_low_{{ $item->inventory_id }}">Low-stock level</label>
+                                <input id="edit_low_{{ $item->inventory_id }}" type="number" min="0" step="0.001" wire:model="edit_low_stock_level" class="ps-input" required>
+                                @error('edit_low_stock_level') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+                            </div>
+                            <div class="flex gap-2 md:pt-6">
+                                <button type="submit" class="ps-button-primary">Save</button>
+                                <button type="button" wire:click="cancelEdit" class="ps-button-secondary">Cancel</button>
+                            </div>
+                        </form>
+                    @endif
+
+                    <div class="grid gap-3 border-t border-[var(--ps-border)] pt-4 lg:grid-cols-[1fr_1.4fr_auto] lg:items-start">
                         <div class="grid gap-1">
                             <div class="flex gap-2">
                                 <input type="number" min="0" step="0.001" wire:model="stockAdd.{{ $item->inventory_id }}" class="ps-input" placeholder="How many to add" aria-label="Quantity to add to {{ $item->material_name }}">
@@ -286,25 +260,27 @@ new #[Title('Cashier Inventory')] class extends Component
                             @error("stockAdd.{$item->inventory_id}") <p class="text-sm text-red-500">{{ $message }}</p> @enderror
                         </div>
                         <div class="grid gap-1">
-                            <div class="flex gap-2">
-                                <input type="number" min="0" step="0.001" wire:model="deduct.{{ $item->inventory_id }}" class="ps-input" placeholder="How many to deduct" aria-label="Quantity to deduct from {{ $item->material_name }}">
+                            <div class="flex flex-col gap-2 sm:flex-row">
+                                <input type="number" min="0" step="0.001" wire:model="deduct.{{ $item->inventory_id }}" class="ps-input sm:max-w-40" placeholder="How many to deduct" aria-label="Quantity to deduct from {{ $item->material_name }}">
+                                <input type="text" wire:model="deductNote.{{ $item->inventory_id }}" class="ps-input" maxlength="255" placeholder="Reason (optional), e.g. used for order #12" aria-label="Reason for deducting {{ $item->material_name }}">
                                 <button type="button" wire:click="deductStock({{ $item->inventory_id }})" wire:loading.attr="disabled" class="ps-button-primary shrink-0">Deduct</button>
                             </div>
                             @error("deduct.{$item->inventory_id}") <p class="text-sm text-red-500">{{ $message }}</p> @enderror
                         </div>
-                        <div>
+                        <div class="flex gap-2">
+                            <button type="button" wire:click="startEdit({{ $item->inventory_id }})" class="ps-button-ghost">Edit</button>
                             <button
                                 type="button"
-                                wire:click="deleteMaterial({{ $item->inventory_id }})"
-                                wire:confirm="Delete {{ $item->material_name }}? This cannot be undone."
-                                class="ps-button-ghost text-red-500"
-                            >Delete</button>
+                                wire:click="archiveMaterial({{ $item->inventory_id }})"
+                                wire:confirm="Archive {{ $item->material_name }}? It leaves the list but its history is kept, and you can restore it later."
+                                class="ps-button-ghost text-amber-600 dark:text-amber-400"
+                            >Archive</button>
                         </div>
                     </div>
                 </li>
             @empty
                 <li class="px-5 py-8 text-sm text-[var(--ps-muted)]">
-                    {{ $search !== '' ? 'No materials match your search.' : 'No inventory items.' }}
+                    {{ $search !== '' ? 'No materials match your search.' : 'No materials yet. Use Add material to create the first one.' }}
                 </li>
             @endforelse
         </ul>

@@ -74,7 +74,7 @@ new #[Title('Cashier Dashboard')] class extends Component
             <h2 class="text-sm font-medium text-[var(--ps-muted)]">Materials</h2>
             <p class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">{{ number_format($inventorySummary['inventory_count'] ?? 0) }}</p>
         </a>
-        <a href="{{ route('cashier.inventory') }}#low-stock-reports-heading" wire:navigate class="ps-glass grid gap-4 p-5 transition-colors hover:border-[var(--ps-border-strong)] sm:p-6">
+        <a href="{{ route('cashier.low-stock-reports') }}" wire:navigate class="ps-glass grid gap-4 p-5 transition-colors hover:border-[var(--ps-border-strong)] sm:p-6">
             <h2 class="text-sm font-medium text-[var(--ps-muted)]">Open Low-Stock Reports</h2>
             <p class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">{{ number_format($inventorySummary['open_low_stock_alert_count'] ?? 0) }}</p>
         </a>

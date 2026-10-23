@@ -11,7 +11,6 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
-use App\StaffSpecialtyType;
 use Laravel\Fortify\Contracts\PasskeyUser;
 use Laravel\Fortify\PasskeyAuthenticatable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
@@ -106,19 +105,26 @@ class User extends Authenticatable implements PasskeyUser
         ];
     }
 
-   private const NO_STOCK_SPECIALTIES = ['graphic_designer'];
+    /**
+     * Specialties that never need to report low stock (they only use a PC).
+     */
+    private const NO_STOCK_SPECIALTIES = ['graphic_designer'];
 
-   public function canReportLowStock(): bool
-   {
-       if ($this->role !== 'staff') {
-           return false;
-       }
+    /**
+     * Whether this staff member can see the inventory page and report low stock.
+     */
+    public function canReportLowStock(): bool
+    {
+        if ($this->role !== 'staff') {
+            return false;
+        }
 
-       $specialties = $this->specialties()->pluck('specialty');
+        $specialties = $this->specialties()->pluck('specialty');
 
-       return $specialties->isEmpty()
-           || $specialties->contains(fn (string $s): bool => ! in_array($s, self::NO_STOCK_SPECIALTIES, true));
-   }
+        return $specialties->isEmpty()
+            || $specialties->contains(fn (string $specialty): bool => ! in_array($specialty, self::NO_STOCK_SPECIALTIES, true));
+    }
+
     /**
      * Get the user's initials
      */

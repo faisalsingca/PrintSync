@@ -71,7 +71,7 @@ test('cashier payment cannot be recorded without confirming it was received in p
     $this->assertDatabaseCount('payments', 0);
 });
 
-test('cashier payment management displays own payment details and dashboard summaries', function () {
+test('cashier payment records show every order with a total and the dashboard summarises the cashier\'s own payments', function () {
     $cashier = User::factory()->create(['role' => 'cashier']);
     $anotherCashier = User::factory()->create(['role' => 'cashier']);
     $customer = User::factory()->create(['role' => 'customer']);
@@ -97,14 +97,15 @@ test('cashier payment management displays own payment details and dashboard summ
     );
 
     $this->actingAs($cashier)
-        ->get(route('cashier.payments'))
+        ->get(route('cashier.payment-records'))
         ->assertOk()
         ->assertSee('Order #'.$firstOrder->order_id)
         ->assertSee('posters')
         ->assertSee('Bank Transfer')
         ->assertSee('183.74')
         ->assertSee('Oct 8, 2026 7:00 PM')
-        ->assertDontSee('927.36');
+        ->assertSee('927.36')
+        ->assertSee($anotherCashier->name);
 
     $this->get(route('cashier.dashboard'))
         ->assertOk()

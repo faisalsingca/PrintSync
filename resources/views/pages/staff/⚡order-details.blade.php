@@ -87,7 +87,7 @@ new #[Title('Order Details')] class extends Component
                 <h2 id="staff-order-heading" class="text-xl font-semibold capitalize text-[var(--ps-text)]">{{ $order->order_type }}</h2>
                 <p class="text-sm text-[var(--ps-muted)]">Customer: {{ $order->customer->name }}</p>
             </div>
-            <span class="ps-status-badge w-fit">{{ OrderStatus::labelFor($order->status) }}</span>
+            <x-status-badge :tone="OrderStatus::toneFor($order->status)" :label="OrderStatus::labelFor($order->status)" />
         </div>
 
         <dl class="grid gap-5 sm:grid-cols-2">
@@ -102,13 +102,10 @@ new #[Title('Order Details')] class extends Component
             <div class="grid gap-1">
                 <dt class="text-sm text-[var(--ps-muted)]">Payment</dt>
                 <dd>
-                    <span @class([
-                        'ps-status-badge w-fit',
-                        'text-emerald-500' => $paymentStatus === 'paid',
-                        'text-amber-500' => $paymentStatus === 'partial' || $paymentStatus === 'unpaid' || $paymentStatus === null,
-                    ])>
-                        {{ $paymentStatus === null ? 'Waiting for total' : ucfirst($paymentStatus) }}
-                    </span>
+                    <x-status-badge
+                :tone="match ($paymentStatus) { 'paid' => 'success', 'partial' => 'warning', 'unpaid' => 'warning', default => 'neutral' }"
+                :label="match ($paymentStatus) { 'paid' => 'Paid', 'partial' => 'Partially paid', 'unpaid' => 'Unpaid', default => 'Waiting for total' }"
+            />
                 </dd>
             </div>
             <div class="grid gap-1 sm:col-span-2">
@@ -119,7 +116,7 @@ new #[Title('Order Details')] class extends Component
                 <dt class="text-sm text-[var(--ps-muted)]">Design file</dt>
                 <dd class="text-[var(--ps-text)]">
                     @if ($order->design_file)
-                        <a href="{{ route('orders.design-file', $order) }}" class="text-[var(--ps-accent)] underline underline-offset-4">Download design file</a>
+                        <span class="text-sm text-[var(--ps-muted)]">Shown below. Preview only.</span>
                     @else
                         No design file attached.
                     @endif
@@ -160,4 +157,24 @@ new #[Title('Order Details')] class extends Component
             </div>
         @endcan
     </section>
+
+    @if ($order->design_file)
+        @php
+            $designExtension = strtolower(pathinfo($order->design_file, PATHINFO_EXTENSION));
+            $designUrl = route('orders.design-file', [$order, 'inline' => 1]);
+        @endphp
+        <section class="ps-glass grid gap-4 p-5 sm:p-8" aria-labelledby="order-design-preview-heading">
+            <div class="grid gap-1">
+                <h2 id="order-design-preview-heading" class="text-xl font-semibold text-[var(--ps-text)]">Customer design</h2>
+                <p class="text-sm text-[var(--ps-muted)]">Shown here so you can work from it. It is a preview only and cannot be downloaded from this page.</p>
+            </div>
+            <div class="overflow-hidden rounded-xl border border-[var(--ps-border)] bg-[var(--ps-surface)]" oncontextmenu="return false">
+                @if ($designExtension === 'pdf')
+                    <iframe src="{{ $designUrl }}#toolbar=0&navpanes=0&scrollbar=1" title="Customer design file" class="h-[75vh] w-full border-0"></iframe>
+                @else
+                    <img src="{{ $designUrl }}" alt="Customer design file for order #{{ $order->order_id }}" class="mx-auto max-h-[80vh] w-auto max-w-full select-none object-contain" draggable="false">
+                @endif
+            </div>
+        </section>
+    @endif
 </div>

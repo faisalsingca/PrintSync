@@ -54,7 +54,7 @@ new #[Title('Order Details')] class extends Component
                 <h2 id="order-tracking-heading" class="text-xl font-semibold capitalize text-[var(--ps-text)]">{{ $order->order_type }}</h2>
                 <p class="text-sm text-[var(--ps-muted)]">Current order status</p>
             </div>
-            <span class="ps-status-badge w-fit">{{ OrderStatus::labelFor($order->status) }}</span>
+            <x-status-badge :tone="OrderStatus::toneFor($order->status)" :label="OrderStatus::labelFor($order->status)" />
         </div>
 
         <dl class="grid gap-5 sm:grid-cols-2">
@@ -89,14 +89,10 @@ new #[Title('Order Details')] class extends Component
                 <h2 id="order-payment-heading" class="text-xl font-semibold text-[var(--ps-text)]">Payment</h2>
                 <p class="text-sm text-[var(--ps-muted)]">Set by the cashier. Pay at the counter.</p>
             </div>
-            <span @class([
-                'ps-status-badge w-fit',
-                'text-emerald-500' => $paymentStatus === 'paid',
-                'text-amber-500' => $paymentStatus === 'partial',
-                'text-red-500' => $paymentStatus === 'unpaid',
-            ])>
-                {{ $paymentStatus === null ? 'Waiting for total' : ucfirst($paymentStatus) }}
-            </span>
+            <x-status-badge
+                :tone="match ($paymentStatus) { 'paid' => 'success', 'partial' => 'warning', 'unpaid' => 'danger', default => 'neutral' }"
+                :label="match ($paymentStatus) { 'paid' => 'Paid', 'partial' => 'Partially paid', 'unpaid' => 'Unpaid', default => 'Waiting for total' }"
+            />
         </div>
 
         @if ($confirmedTotal === null)

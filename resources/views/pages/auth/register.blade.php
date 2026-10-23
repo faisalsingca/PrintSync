@@ -32,6 +32,7 @@
 
             <!-- Password -->
             <flux:input
+                id="password"
                 name="password"
                 :label="__('Password')"
                 type="password"
@@ -42,8 +43,11 @@
                 viewable
             />
 
+            <x-password-checklist for="password" confirm="password_confirmation" />
+
             <!-- Confirm Password -->
             <flux:input
+                id="password_confirmation"
                 name="password_confirmation"
                 :label="__('Confirm password')"
                 type="password"

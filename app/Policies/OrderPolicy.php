@@ -16,13 +16,15 @@ class OrderPolicy
     {
         return $user->role === 'customer';
     }
-  public function createWalkIn(User $user): bool
-  {
-      return $user->role === 'cashier';
-  }
+
     /**
-     * Determine whether the user may view the order.
+     * Determine whether the user may create an order for a walk-in customer.
      */
+    public function createWalkIn(User $user): bool
+    {
+        return $user->role === 'cashier';
+    }
+
     /**
      * Determine whether the user may view the order.
      */
@@ -51,14 +53,15 @@ class OrderPolicy
     {
         return match ($user->role) {
             'customer' => $order->customer_id === $user->id,
-            'staff' => $order->assignments()
-                ->where('staff_id', $user->id)
-                ->whereIn('assignment_status', [
-                    OrderAssignment::STATUS_OFFERED,
-                    OrderAssignment::STATUS_ACCEPTED,
-                ])
-                ->where('is_active', true)
-                ->exists(),
+            'staff' => app(OrderService::class)->staffCanServe($user, $order)
+                || $order->assignments()
+                    ->where('staff_id', $user->id)
+                    ->whereIn('assignment_status', [
+                        OrderAssignment::STATUS_OFFERED,
+                        OrderAssignment::STATUS_ACCEPTED,
+                    ])
+                    ->where('is_active', true)
+                    ->exists(),
             'owner' => true,
             default => false,
         };

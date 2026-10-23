@@ -64,7 +64,7 @@ test('an order that already has an active assignment is not assigned twice', fun
         ->and($service->autoAssignOrder($order))->toBeNull();
 });
 
-test('a new customer order is assigned automatically and appears in the staff member assigned orders', function () {
+test('a new customer order appears in the orders of staff with the matching specialty', function () {
     $customer = User::factory()->create(['role' => 'customer']);
     $designer = autoAssignStaff('graphic_designer');
 
@@ -78,8 +78,8 @@ test('a new customer order is assigned automatically and appears in the staff me
 
     $order = Order::query()->sole();
 
-    expect($order->order_type)->toBe('Graphic design / layout')
-        ->and($order->assignments()->sole()->staff_id)->toBe($designer->id);
+    // Orders are shared by specialty, so no individual assignment row is needed.
+    expect($order->order_type)->toBe('Graphic design / layout');
 
     expect(app(OrderService::class)->getStaffOrders($designer)->pluck('order_id')->all())
         ->toBe([$order->order_id]);
