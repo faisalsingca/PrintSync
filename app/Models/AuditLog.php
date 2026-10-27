@@ -50,6 +50,14 @@ class AuditLog extends Model
         return $this->belongsTo(User::class);
     }
 
+    /**
+     * True for entries rebuilt from records that existed before the audit log was introduced.
+     */
+    public function isBackfilled(): bool
+    {
+        return (bool) ($this->details['backfilled'] ?? false);
+    }
+
     public function actionLabel(): string
     {
         return self::ACTIONS[$this->action][0] ?? $this->action;

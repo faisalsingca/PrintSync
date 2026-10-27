@@ -109,6 +109,9 @@ new #[Title('Audit Log')] class extends Component
                     <div class="grid gap-2">
                         <div class="flex flex-wrap items-center gap-2">
                             <x-status-badge :tone="$log->actionTone()" :label="$log->actionLabel()" />
+                            @if ($log->isBackfilled())
+                                <x-status-badge tone="neutral" label="From earlier records" />
+                            @endif
                             @if ($log->subject_label)
                                 <span class="text-sm font-medium text-[var(--ps-text)]">{{ $log->subject_label }}</span>
                             @endif
@@ -118,7 +121,7 @@ new #[Title('Audit Log')] class extends Component
                 </li>
             @empty
                 <li class="px-5 py-8 text-sm text-[var(--ps-muted)]">
-                    No entries match. Inventory changes are recorded here as they happen.
+                    No entries match. Inventory changes are recorded here as they happen. To add what happened before the audit log existed, run: php artisan audit:backfill-inventory
                 </li>
             @endforelse
         </ul>
