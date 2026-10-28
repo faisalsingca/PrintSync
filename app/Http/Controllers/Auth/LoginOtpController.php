@@ -34,6 +34,14 @@ class LoginOtpController extends Controller
             return redirect()->route('login');
         }
 
+        if (! $user->is_active) {
+            $otp->clear($request, $user);
+
+            return redirect()->route('login')->withErrors([
+                'email' => 'This account has been deactivated. Contact an administrator for help.',
+            ]);
+        }
+
         $request->validate(['code' => ['required', 'digits:6']]);
 
         $result = $otp->verify($user, (string) $request->input('code'));
@@ -69,6 +77,14 @@ class LoginOtpController extends Controller
 
         if ($user === null) {
             return redirect()->route('login');
+        }
+
+        if (! $user->is_active) {
+            $otp->clear($request, $user);
+
+            return redirect()->route('login')->withErrors([
+                'email' => 'This account has been deactivated. Contact an administrator for help.',
+            ]);
         }
 
         try {

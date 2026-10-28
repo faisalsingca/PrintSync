@@ -5,8 +5,10 @@ namespace App\Providers;
 use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
 use App\Actions\Fortify\SendLoginOtp;
+use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
@@ -68,6 +70,18 @@ class FortifyServiceProvider extends ServiceProvider
      */
     private function configureLoginPipeline(): void
     {
+        Fortify::authenticateUsing(function (Request $request): ?User {
+            $user = User::query()
+                ->where('email', $request->input(Fortify::username()))
+                ->first();
+
+            return $user !== null
+                && $user->is_active
+                && Hash::check((string) $request->input('password'), $user->password)
+                    ? $user
+                    : null;
+        });
+
         Fortify::authenticateThrough(function (Request $request) {
             $otpEnabled = (bool) config('otp.enabled');
 

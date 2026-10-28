@@ -20,6 +20,7 @@ test('public registration always assigns the customer role', function () {
     $response = $this->post(route('register.store'), [
         'name' => 'John Doe',
         'email' => 'test@example.com',
+        'phone' => '09171234567',
         'password' => 'password',
         'password_confirmation' => 'password',
         'role' => 'owner',
@@ -32,6 +33,7 @@ test('public registration always assigns the customer role', function () {
     $this->assertDatabaseHas('users', [
         'email' => 'test@example.com',
         'role' => 'customer',
+        'phone' => '09171234567',
     ]);
 
     $user = User::where('email', 'test@example.com')->firstOrFail();

@@ -5,6 +5,7 @@ use App\Models\Order;
 use App\Models\Payment;
 use App\Services\OrderTotalService;
 use App\Services\PaymentService;
+use App\Services\AuditLogService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
@@ -126,7 +127,7 @@ new #[Title('Cashier Payments')] class extends Component
             ->when($search !== '', fn ($rows) => $rows->filter(function (array $row) use ($search): bool {
                 $order = $row['order'];
                 $haystack = '#'.$order->order_id.' '
-                    .$order->customer->name.' '
+                    .$order->customerDisplayName().' '
                     .$order->order_type.' '
                     .$order->payments->map(fn ($payment) => $payment->cashier?->name)->filter()->implode(' ');
 
@@ -146,7 +147,7 @@ new #[Title('Cashier Payments')] class extends Component
         ];
     }
 
-    public function saveTotal(OrderTotalService $orderTotalService): void
+    public function saveTotal(OrderTotalService $orderTotalService, AuditLogService $auditLog): void
     {
         $validated = $this->validate([
             'order_id' => ['required', 'exists:orders,order_id'],
@@ -164,13 +165,23 @@ new #[Title('Cashier Payments')] class extends Component
             $reason === '' ? null : $reason,
         );
 
+        $auditLog->record(
+            auth()->user(),
+            'cashier.order_total_confirmed',
+            "Confirmed the total for order #{$order->order_id} as {$validated['confirmed_total']}.",
+            Order::class,
+            $order->order_id,
+            "Order #{$order->order_id}",
+            ['confirmed_total' => $validated['confirmed_total']],
+        );
+
         session()->flash('status', 'Order total saved.');
         $this->reset('confirmed_total', 'total_reason');
         $this->refreshOrders();
         $this->syncSelectedOrderSummary();
     }
 
-    public function recordPayment(PaymentService $paymentService): void
+    public function recordPayment(PaymentService $paymentService, AuditLogService $auditLog): void
     {
         Gate::authorize('create', Payment::class);
 
@@ -185,12 +196,22 @@ new #[Title('Cashier Payments')] class extends Component
             ]);
         }
 
-        $paymentService->recordPayment(
+        $payment = $paymentService->recordPayment(
             $order,
             auth()->user(),
             $validated['payment_method'],
             (string) $validated['received'],
             Carbon::parse($validated['payment_date']),
+        );
+
+        $auditLog->record(
+            auth()->user(),
+            'cashier.payment_recorded',
+            "Recorded a payment of {$payment->received} for order #{$order->order_id}.",
+            Payment::class,
+            $payment->payment_id,
+            "Order #{$order->order_id}",
+            ['payment_method' => $payment->payment_method, 'received' => $payment->received],
         );
 
         session()->flash('status', 'Payment recorded successfully.');
@@ -283,7 +304,7 @@ new #[Title('Cashier Payments')] class extends Component
                     <option value="">Select an order</option>
                     @foreach ($orders as $order)
                         <option wire:key="payment-order-option-{{ $order->order_id }}" value="{{ $order->order_id }}">
-                            #{{ $order->order_id }} — {{ $order->order_type }} — {{ $order->customer->name }}
+                            #{{ $order->order_id }} — {{ $order->order_type }} — {{ $order->customerDisplayName() }}
                             @if ($order->confirmed_total !== null)
                                 (Total: {{ $order->confirmed_total }})
                             @else
@@ -446,7 +467,7 @@ new #[Title('Cashier Payments')] class extends Component
                                 Order #{{ $recordOrder->order_id }}
                                 <span class="font-normal capitalize text-[var(--ps-muted)]">— {{ $recordOrder->order_type }}</span>
                             </h3>
-                            <p class="text-sm text-[var(--ps-muted)]">{{ $recordOrder->customer->name }}</p>
+                            <p class="text-sm text-[var(--ps-muted)]">{{ $recordOrder->customerDisplayName() }}</p>
                         </div>
                         <div>
                             <p class="text-xs uppercase tracking-wide text-[var(--ps-muted)]">Total</p>

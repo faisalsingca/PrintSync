@@ -24,7 +24,7 @@ class SendLoginOtp
         $credentials = $request->only(Fortify::username(), 'password');
         $user = $provider->retrieveByCredentials($credentials);
 
-        if ($user === null || ! $provider->validateCredentials($user, $credentials)) {
+        if ($user === null || ! $user->is_active || ! $provider->validateCredentials($user, $credentials)) {
             $this->limiter->increment($request);
 
             throw ValidationException::withMessages([

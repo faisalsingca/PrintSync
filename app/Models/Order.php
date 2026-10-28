@@ -11,7 +11,8 @@ use Illuminate\Support\Carbon;
 
 /**
  * @property int $order_id
- * @property int $customer_id
+ * @property int|null $customer_id
+ * @property string|null $customer_name
  * @property Carbon $order_date
  * @property string $order_type
  * @property string|null $service_line
@@ -26,7 +27,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $updated_at
  */
 #[Table(key: 'order_id')]
-#[Fillable(['customer_id', 'order_date', 'order_type', 'service_line', 'description', 'design_file', 'quantity', 'status'])]
+#[Fillable(['customer_id', 'customer_name', 'order_date', 'order_type', 'service_line', 'description', 'design_file', 'quantity', 'status'])]
 class Order extends Model
 {
     /**
@@ -35,6 +36,11 @@ class Order extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'customer_id');
+    }
+
+    public function customerDisplayName(): string
+    {
+        return $this->customer?->name ?? $this->customer_name ?? 'Walk-in customer';
     }
 
     /**

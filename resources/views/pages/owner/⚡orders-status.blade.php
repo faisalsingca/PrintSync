@@ -117,7 +117,7 @@ new #[Title('Orders by Status')] class extends Component
                             Order #{{ $order->order_id }}
                             <span class="font-normal capitalize text-[var(--ps-muted)]">— {{ $order->order_type }}</span>
                         </h3>
-                        <p class="text-sm text-[var(--ps-muted)]">{{ $order->customer->name }}</p>
+                        <p class="text-sm text-[var(--ps-muted)]">{{ $order->customerDisplayName() }}</p>
                         @if ($order->description)
                             <p class="line-clamp-2 text-sm text-[var(--ps-muted)]">{{ $order->description }}</p>
                         @endif

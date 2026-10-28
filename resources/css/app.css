@@ -259,6 +259,57 @@ select:focus[data-flux-control] {
     background: var(--ps-accent-soft);
 }
 
+@media print {
+    .ps-app-shell {
+        min-height: 0;
+        overflow: visible;
+        background: #fff !important;
+        color: #111 !important;
+    }
+
+    .ps-atmosphere,
+    .ps-rail,
+    .ps-rail-backdrop,
+    .ps-topbar,
+    .print\:hidden {
+        display: none !important;
+    }
+
+    .ps-main-shell {
+        padding: 0 !important;
+    }
+
+    .owner-reports-page {
+        display: block !important;
+        color: #111 !important;
+    }
+
+    .owner-reports-page .ps-glass {
+        overflow: visible !important;
+        border-color: #bbb !important;
+        background: #fff !important;
+        box-shadow: none !important;
+        color: #111 !important;
+        break-inside: avoid;
+    }
+
+    .owner-reports-page table {
+        width: 100%;
+        min-width: 0 !important;
+        border-collapse: collapse;
+    }
+
+    .owner-reports-page tr {
+        break-inside: avoid;
+    }
+
+    .owner-reports-page th,
+    .owner-reports-page td {
+        border-bottom: 1px solid #ddd;
+        color: #111 !important;
+    }
+}
+
 .ps-user-trigger-name {
     display: block;
     max-width: 11rem;

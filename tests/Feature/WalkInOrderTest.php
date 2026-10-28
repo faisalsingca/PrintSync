@@ -20,8 +20,10 @@ test('the cashier can create a walk-in order', function () {
     expect($order->quantity)->toBe(3)
         ->and($order->status)->toBe('pending')
         ->and($order->service_line)->toBe('tarpaulin_printing')
-        ->and($order->customer->name)->toBe('Juan Dela Cruz (walk-in)')
-        ->and($order->customer->role)->toBe('customer');
+        ->and($order->customer_id)->toBeNull()
+        ->and($order->customer_name)->toBe('Juan Dela Cruz');
+
+    expect(User::query()->where('role', 'customer')->count())->toBe(0);
 });
 
 test('walk-in orders require a name, an order type and a valid quantity', function () {
@@ -33,6 +35,31 @@ test('walk-in orders require a name, an order type and a valid quantity', functi
         ->assertHasErrors(['customer_name', 'service_line', 'quantity']);
 
     expect(Order::query()->count())->toBe(0);
+});
+
+test('cashier can link a walk-in order to an existing customer account', function () {
+    $customer = User::factory()->create([
+        'name' => 'Maria Customer',
+        'email' => 'maria@example.com',
+        'phone' => '09171234567',
+        'role' => 'customer',
+    ]);
+
+    $this->actingAs(User::factory()->create(['role' => 'cashier']));
+
+    Livewire::test('pages::cashier.create-walk-in-order')
+        ->set('customerSearch', '09171234567')
+        ->call('selectCustomer', $customer->id)
+        ->set('service_line', 'tarpaulin_printing')
+        ->set('quantity', 2)
+        ->call('createWalkInOrder')
+        ->assertHasNoErrors();
+
+    $order = Order::query()->firstOrFail();
+
+    expect($order->customer_id)->toBe($customer->id)
+        ->and($order->customer_name)->toBeNull()
+        ->and(User::query()->where('role', 'customer')->count())->toBe(1);
 });
 
 test('only the cashier can open the walk-in order page', function (string $role) {

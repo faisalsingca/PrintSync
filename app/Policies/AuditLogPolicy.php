@@ -7,10 +7,10 @@ use App\Models\User;
 class AuditLogPolicy
 {
     /**
-     * Only the owner can read the audit log.
+     * The owner monitors activity; the Super Admin manages staff and can review the audit trail.
      */
     public function viewAny(User $user): bool
     {
-        return $user->role === 'owner';
+        return in_array($user->role, ['owner', 'super_admin'], true);
     }
 }

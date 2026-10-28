@@ -1,5 +1,6 @@
 @php
     $role = auth()->user()->role;
+    $roleLabel = $role === 'super_admin' ? 'Super Admin' : ucfirst($role);
 
     $items = match ($role) {
         'customer' => [
@@ -26,6 +27,7 @@
         ],
         'owner' => [
             ['Dashboard', 'home', route('owner.dashboard'), request()->routeIs('owner.dashboard')],
+            ['Reports', 'document-chart-bar', route('owner.reports'), request()->routeIs('owner.reports')],
             ['Business Monitoring', 'presentation-chart-line', route('owner.monitoring'), request()->routeIs('owner.monitoring')],
             ['Orders by Status', 'chart-bar', route('owner.orders-status'), request()->routeIs('owner.orders-status')],
             ['Order Routing', 'arrows-right-left', route('owner.routing'), request()->routeIs('owner.routing')],
@@ -34,6 +36,10 @@
             ['Low-Stock Alerts', 'exclamation-triangle', route('owner.low-stock'), request()->routeIs('owner.low-stock')],
             ['Saved Payments', 'banknotes', route('owner.payments'), request()->routeIs('owner.payments')],
             ['Audit Log', 'shield-check', route('owner.audit-logs'), request()->routeIs('owner.audit-logs')],
+        ],
+        'super_admin' => [
+            ['Staff Accounts', 'users', route('super-admin.staff'), request()->routeIs('super-admin.staff')],
+            ['Audit Log', 'shield-check', route('super-admin.audit-logs'), request()->routeIs('super-admin.audit-logs')],
         ],
         default => [],
     };
@@ -50,8 +56,8 @@
         </button>
     </div>
 
-    <nav class="grid gap-1" aria-label="{{ ucfirst($role) }} modules">
-        <div class="ps-rail-heading">{{ ucfirst($role) }} workspace</div>
+    <nav class="grid gap-1" aria-label="{{ $roleLabel }} modules">
+        <div class="ps-rail-heading">{{ $roleLabel }} workspace</div>
         @foreach ($items as [$label, $icon, $href, $current])
             <a
                 href="{{ $href }}"

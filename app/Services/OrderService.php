@@ -11,7 +11,6 @@ use App\StaffSpecialtyType;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class OrderService
@@ -47,25 +46,17 @@ class OrderService
     }
 
     /**
-     * Create an order for a customer who ordered in person (no account).
-     * A placeholder customer record keeps every existing order page working.
+     * Create an order for an in-person customer, linking an account when one was found.
      *
      * @param  array{order_type: string, service_line: string, description?: ?string, quantity: int}  $attributes
      */
-    public function createWalkInOrder(string $customerName, array $attributes): Order
+    public function createWalkInOrder(string $customerName, array $attributes, ?User $customer = null): Order
     {
-        return DB::transaction(function () use ($customerName, $attributes): Order {
-            $customer = User::create([
-                'name' => $customerName.' (walk-in)',
-                'email' => 'walk-in-'.Str::uuid().'@walkin.printsync.local',
-                'password' => Str::random(40),
-                'role' => 'customer',
-            ]);
-            $customer->forceFill(['email_verified_at' => now()])->save();
-
+        return DB::transaction(function () use ($customerName, $attributes, $customer): Order {
             return $this->createOrder([
                 ...$attributes,
-                'customer_id' => $customer->id,
+                'customer_id' => $customer?->id,
+                'customer_name' => $customer === null ? $customerName : null,
                 'order_date' => now(),
                 'status' => 'pending',
             ]);

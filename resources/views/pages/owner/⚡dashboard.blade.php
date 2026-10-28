@@ -61,6 +61,9 @@ new #[Title('Owner Dashboard')] class extends Component
         <a href="{{ route('owner.monitoring') }}" wire:navigate class="ps-button-secondary mt-6 inline-flex w-fit items-center gap-2">
             Open business monitoring <span aria-hidden="true">→</span>
         </a>
+        <a href="{{ route('owner.reports') }}" wire:navigate class="ps-button-secondary mt-3 inline-flex w-fit items-center gap-2">
+            Open reports <span aria-hidden="true">→</span>
+        </a>
     </section>
 
     <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Business summary">

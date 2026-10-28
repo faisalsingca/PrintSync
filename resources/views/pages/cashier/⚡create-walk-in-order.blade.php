@@ -1,9 +1,12 @@
 <?php
 
 use App\Models\Order;
+use App\Models\User;
 use App\OrderServiceLine;
 use App\Services\OrderService;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Collection;
+use Livewire\Attributes\Computed;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -11,6 +14,10 @@ use Livewire\Component;
 new #[Title('Walk-in Order')] class extends Component
 {
     public string $customer_name = '';
+
+    public string $customerSearch = '';
+
+    public ?int $selectedCustomerId = null;
 
     public mixed $service_line = '';
 
@@ -25,28 +32,81 @@ new #[Title('Walk-in Order')] class extends Component
         Gate::authorize('createWalkIn', Order::class);
     }
 
+    public function updatedCustomerSearch(): void
+    {
+        $this->selectedCustomerId = null;
+    }
+
+    public function selectCustomer(int $customerId): void
+    {
+        Gate::authorize('createWalkIn', Order::class);
+
+        $customer = User::query()
+            ->where('role', 'customer')
+            ->findOrFail($customerId);
+
+        $this->selectedCustomerId = $customer->id;
+        $this->customerSearch = $customer->name;
+    }
+
+    public function clearCustomerSelection(): void
+    {
+        Gate::authorize('createWalkIn', Order::class);
+
+        $this->selectedCustomerId = null;
+        $this->customerSearch = '';
+    }
+
+    /**
+     * @return Collection<int, User>
+     */
+    #[Computed]
+    public function customerMatches(): Collection
+    {
+        $search = trim($this->customerSearch);
+
+        if (mb_strlen($search) < 2) {
+            return new Collection;
+        }
+
+        return User::query()
+            ->where('role', 'customer')
+            ->where(function ($query) use ($search): void {
+                $query->where('name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%");
+            })
+            ->orderBy('name')
+            ->limit(8)
+            ->get(['id', 'name', 'email', 'phone']);
+    }
+
     public function createWalkInOrder(OrderService $orderService): void
     {
         Gate::authorize('createWalkIn', Order::class);
 
         $validated = $this->validate([
-            'customer_name' => ['required', 'string', 'max:100'],
+            'customer_name' => [Rule::requiredIf($this->selectedCustomerId === null), 'nullable', 'string', 'max:100'],
+            'selectedCustomerId' => ['nullable', 'integer', Rule::exists('users', 'id')->where('role', 'customer')],
             'service_line' => ['required', Rule::enum(OrderServiceLine::class)],
             'description' => ['nullable', 'string', 'max:2000'],
             'quantity' => ['required', 'integer', 'min:1', 'max:100000'],
         ]);
 
         $serviceLine = OrderServiceLine::from($validated['service_line']);
+        $customer = $this->selectedCustomerId === null
+            ? null
+            : User::query()->where('role', 'customer')->findOrFail($this->selectedCustomerId);
 
-        $order = $orderService->createWalkInOrder(trim($validated['customer_name']), [
+        $order = $orderService->createWalkInOrder(trim((string) ($validated['customer_name'] ?? '')), [
             'order_type' => $serviceLine->label(),
             'service_line' => $serviceLine->value,
             'description' => $validated['description'] ?? null,
             'quantity' => (int) $validated['quantity'],
-        ]);
+        ], $customer);
 
-        $this->successMessage = "Walk-in order #{$order->order_id} was created for {$validated['customer_name']}. Set the total and record the payment on the Manage Payments page.";
-        $this->reset('customer_name', 'service_line', 'description');
+        $this->successMessage = "Walk-in order #{$order->order_id} was created for {$order->customerDisplayName()}. Set the total and record the payment on the Manage Payments page.";
+        $this->reset('customer_name', 'customerSearch', 'selectedCustomerId', 'service_line', 'description');
         $this->quantity = 1;
     }
 };
@@ -57,7 +117,7 @@ new #[Title('Walk-in Order')] class extends Component
         <div class="grid gap-1">
             <h1 class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">Walk-in Order</h1>
             <p class="max-w-xl text-sm leading-6 text-[var(--ps-muted)]">
-                For customers who order in person and have no account. The order starts as pending and goes to the staff who handle that service.
+                Search for a customer account first. If there is no match, create the order as a guest without creating an account.
             </p>
         </div>
         <a href="{{ route('cashier.payments') }}" wire:navigate class="ps-button-secondary w-fit">Go to payments</a>
@@ -72,10 +132,41 @@ new #[Title('Walk-in Order')] class extends Component
     <form wire:submit="createWalkInOrder" class="ps-glass grid gap-7 p-5 sm:p-8">
         <div class="grid gap-6 md:grid-cols-2">
             <div class="grid gap-1 md:col-span-2">
-                <label for="customer_name" class="text-sm font-medium text-[var(--ps-text)]">Customer name</label>
-                <input id="customer_name" type="text" wire:model="customer_name" class="ps-input" maxlength="100" required>
-                @error('customer_name') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+                <label for="customer-search" class="text-sm font-medium text-[var(--ps-text)]">Find an existing customer</label>
+                <input id="customer-search" type="search" wire:model.live.debounce.300ms="customerSearch" class="ps-input" placeholder="Name, email, or phone">
+                @if ($selectedCustomerId !== null)
+                    <div class="flex items-center justify-between gap-3 rounded-lg border border-[var(--ps-border)] px-3 py-2 text-sm">
+                        <span class="text-[var(--ps-text)]">Account selected: {{ $this->customerMatches->firstWhere('id', $selectedCustomerId)?->name ?? $customerSearch }}</span>
+                        <button type="button" wire:click="clearCustomerSelection" class="ps-button-ghost">Clear</button>
+                    </div>
+                @endif
+                @if ($selectedCustomerId === null && mb_strlen(trim($customerSearch)) >= 2)
+                    <ul class="divide-y divide-[var(--ps-border)] rounded-lg border border-[var(--ps-border)]" aria-label="Matching customer accounts">
+                        @forelse ($this->customerMatches as $customer)
+                            <li wire:key="customer-match-{{ $customer->id }}">
+                                <button type="button" wire:click="selectCustomer({{ $customer->id }})" class="grid w-full gap-1 px-3 py-2 text-left hover:bg-black/5">
+                                    <span class="font-medium text-[var(--ps-text)]">{{ $customer->name }}</span>
+                                    <span class="text-xs text-[var(--ps-muted)]">{{ $customer->email }}
+                                        @if ($customer->phone !== null)
+                                            · {{ $customer->phone }}
+                                        @endif
+                                    </span>
+                                </button>
+                            </li>
+                        @empty
+                            <li class="px-3 py-2 text-sm text-[var(--ps-muted)]">No matching account found. Continue below as a guest.</li>
+                        @endforelse
+                    </ul>
+                @endif
             </div>
+
+            @if ($selectedCustomerId === null)
+                <div class="grid gap-1 md:col-span-2">
+                    <label for="customer_name" class="text-sm font-medium text-[var(--ps-text)]">Guest customer name</label>
+                    <input id="customer_name" type="text" wire:model="customer_name" class="ps-input" maxlength="100" required>
+                    @error('customer_name') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+                </div>
+            @endif
 
             <div class="grid gap-1">
                 <label for="service_line" class="text-sm font-medium text-[var(--ps-text)]">Order type</label>

@@ -89,7 +89,7 @@ new #[Title('Staff Dashboard')] class extends Component
                     <a href="{{ route('staff.orders.show', $order) }}" wire:navigate class="grid gap-2 px-5 py-4 transition-colors hover:bg-[var(--ps-accent-soft)]/40 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6">
                         <div class="grid gap-1">
                             <h3 class="font-medium text-[var(--ps-text)]">Order #{{ $order->order_id }} <span class="font-normal capitalize text-[var(--ps-muted)]">— {{ $order->order_type }}</span></h3>
-                            <p class="text-sm text-[var(--ps-muted)]">{{ $order->customer->name }} · {{ $order->order_date->format('M j, Y') }}</p>
+                            <p class="text-sm text-[var(--ps-muted)]">{{ $order->customerDisplayName() }} · {{ $order->order_date->format('M j, Y') }}</p>
                         </div>
                         <span class="flex flex-wrap items-center gap-2">
                             @if (! app(\App\Services\PaymentService::class)->isReadyForProduction($order))

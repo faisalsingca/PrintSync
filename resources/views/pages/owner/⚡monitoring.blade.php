@@ -26,7 +26,8 @@ new #[Title('Business Monitoring')] class extends Component
         ['Inventory Materials', 'Current quantities and stock status.', route('owner.inventory')],
         ['Low-Stock Alerts', 'Reports from staff and automatic alerts.', route('owner.low-stock')],
         ['Saved Payments', 'Totals and recent payment records.', route('owner.payments')],
-        ['Audit Log', 'Who changed the inventory and when.', route('owner.audit-logs')],
+        ['Audit Log', 'Recorded actions by staff and administrators.', route('owner.audit-logs')],
+        ['Reports', 'Printable sales, payment, inventory, and activity reports.', route('owner.reports')],
     ];
 @endphp
 

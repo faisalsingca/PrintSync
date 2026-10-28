@@ -2,6 +2,7 @@
 
 use App\Models\Order;
 use App\OrderStatus;
+use App\Services\AuditLogService;
 use App\Services\OrderService;
 use App\Services\PaymentService;
 use Illuminate\Support\Facades\Gate;
@@ -34,7 +35,7 @@ new #[Title('Order Details')] class extends Component
         $this->refreshPayment($paymentService);
     }
 
-    public function updateProductionStatus(string $status, OrderService $orderService): void
+    public function updateProductionStatus(string $status, OrderService $orderService, AuditLogService $auditLog): void
     {
         $order = Order::query()->findOrFail($this->order->order_id);
         Gate::authorize('updateProductionStatus', $order);
@@ -49,6 +50,15 @@ new #[Title('Order Details')] class extends Component
             auth()->user(),
             OrderStatus::from($status),
         )->load('customer');
+        $auditLog->record(
+            auth()->user(),
+            'staff.order_status_updated',
+            "Updated order #{$order->order_id} to ".OrderStatus::from($status)->label().'.',
+            Order::class,
+            $order->order_id,
+            "Order #{$order->order_id}",
+            ['status' => $status],
+        );
         $this->statusMessage = 'Order status updated to '.OrderStatus::from($status)->label().'.';
         $this->refreshPayment(app(PaymentService::class));
     }
@@ -85,7 +95,7 @@ new #[Title('Order Details')] class extends Component
         <div class="flex flex-col gap-3 border-b border-[var(--ps-border)] pb-5 sm:flex-row sm:items-center sm:justify-between">
             <div class="grid gap-1">
                 <h2 id="staff-order-heading" class="text-xl font-semibold capitalize text-[var(--ps-text)]">{{ $order->order_type }}</h2>
-                <p class="text-sm text-[var(--ps-muted)]">Customer: {{ $order->customer->name }}</p>
+                <p class="text-sm text-[var(--ps-muted)]">Customer: {{ $order->customerDisplayName() }}</p>
             </div>
             <x-status-badge :tone="OrderStatus::toneFor($order->status)" :label="OrderStatus::labelFor($order->status)" />
         </div>

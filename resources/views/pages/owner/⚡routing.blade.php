@@ -50,7 +50,7 @@ new #[Title('Order Routing')] class extends Component
                                 Order #{{ $order->order_id }} <span class="font-normal capitalize text-[var(--ps-muted)]">— {{ $order->order_type }}</span>
                             </a>
                         </h3>
-                        <p class="text-sm text-[var(--ps-muted)]">{{ $order->customer->name }} · Submitted {{ $order->order_date->format('M j, Y') }}</p>
+                        <p class="text-sm text-[var(--ps-muted)]">{{ $order->customerDisplayName() }} · Submitted {{ $order->order_date->format('M j, Y') }}</p>
                     </div>
                     <p class="text-sm">
                         @if ($line === null)

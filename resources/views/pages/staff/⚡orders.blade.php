@@ -2,6 +2,7 @@
 
 use App\Models\OrderAssignment;
 use App\OrderStatus;
+use App\Services\AuditLogService;
 use App\Services\OrderService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
@@ -38,7 +39,7 @@ new #[Title('Staff Orders')] class extends Component
             ->when($this->statusFilter !== '', fn ($orders) => $orders->where('status', $this->statusFilter))
             ->when($search !== '', fn ($orders) => $orders->filter(
                 fn ($order): bool => str_contains(
-                    mb_strtolower($order->order_type.' '.$order->customer->name.' #'.$order->order_id),
+                    mb_strtolower($order->order_type.' '.$order->customerDisplayName().' #'.$order->order_id),
                     $search,
                 )
             ))
@@ -55,7 +56,7 @@ new #[Title('Staff Orders')] class extends Component
         $this->respondToTask($assignmentId, false, $orderService);
     }
 
-    private function respondToTask(int $assignmentId, bool $accept, OrderService $orderService): void
+    private function respondToTask(int $assignmentId, bool $accept, OrderService $orderService, AuditLogService $auditLog): void
     {
         $assignment = OrderAssignment::query()
             ->with('order')
@@ -64,6 +65,16 @@ new #[Title('Staff Orders')] class extends Component
         Gate::authorize('respondToAssignment', [$assignment->order, $assignment]);
 
         $orderService->respondToAssignment($assignment, auth()->user(), $accept);
+        $auditLog->record(
+            auth()->user(),
+            $accept ? 'staff.assignment_accepted' : 'staff.assignment_declined',
+            $accept
+                ? "Accepted order #{$assignment->order_id}."
+                : "Declined order #{$assignment->order_id}.",
+            OrderAssignment::class,
+            $assignment->assignment_id,
+            "Order #{$assignment->order_id}",
+        );
         $this->refreshOrders($orderService);
         $this->responseMessage = $accept
             ? "Order #{$assignment->order_id} was accepted."
@@ -103,7 +114,7 @@ new #[Title('Staff Orders')] class extends Component
                     <li wire:key="staff-task-offer-{{ $offer->assignment_id }}" class="grid gap-4 rounded-xl border border-[var(--ps-border)] bg-[var(--ps-surface)] p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:p-5">
                         <a href="{{ route('staff.orders.show', $offer->order) }}" wire:navigate class="grid gap-1">
                             <h3 class="font-semibold text-[var(--ps-text)]">Order #{{ $offer->order->order_id }} <span class="font-normal capitalize text-[var(--ps-muted)]">— {{ $offer->order->order_type }}</span></h3>
-                            <p class="text-sm text-[var(--ps-muted)]">{{ $offer->order->customer->name }} · {{ number_format($offer->order->quantity) }} {{ str('copy')->plural($offer->order->quantity) }} · {{ $offer->order->order_date->format('M j, Y') }}</p>
+                            <p class="text-sm text-[var(--ps-muted)]">{{ $offer->order->customerDisplayName() }} · {{ number_format($offer->order->quantity) }} {{ str('copy')->plural($offer->order->quantity) }} · {{ $offer->order->order_date->format('M j, Y') }}</p>
                         </a>
                         <div class="flex flex-col gap-2 sm:flex-row">
                             <button type="button" wire:click="acceptTask({{ $offer->assignment_id }})" wire:loading.attr="disabled" class="ps-button-primary">Accept</button>
@@ -156,7 +167,7 @@ new #[Title('Staff Orders')] class extends Component
                                     <span aria-hidden="true">·</span>
                                     <span>{{ $order->order_date->format('M j, Y') }}</span>
                                     <span aria-hidden="true">·</span>
-                                    <span>{{ $order->customer->name }}</span>
+                                    <span>{{ $order->customerDisplayName() }}</span>
                                 </p>
                             </div>
                         </div>

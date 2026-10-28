@@ -43,6 +43,14 @@ class AuditLog extends Model
         'inventory.stock_added' => ['Stock added', 'success'],
         'inventory.stock_deducted' => ['Stock deducted', 'danger'],
         'inventory.low_stock_reported' => ['Low stock reported', 'warning'],
+        'admin.staff_created' => ['Staff account created', 'info'],
+        'admin.staff_activated' => ['Staff account activated', 'success'],
+        'admin.staff_deactivated' => ['Staff account deactivated', 'warning'],
+        'staff.assignment_accepted' => ['Order accepted', 'success'],
+        'staff.assignment_declined' => ['Order declined', 'warning'],
+        'staff.order_status_updated' => ['Production status updated', 'info'],
+        'cashier.order_total_confirmed' => ['Order total confirmed', 'info'],
+        'cashier.payment_recorded' => ['Payment recorded', 'success'],
     ];
 
     public function user(): BelongsTo

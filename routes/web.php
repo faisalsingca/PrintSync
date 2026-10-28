@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Storage;
 
 Route::view('/', 'welcome')->name('home');
 
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth', 'active'])->group(function () {
     Route::get('orders/{order}/design-file', function (Request $request, Order $order) {
         Gate::authorize('viewDesignFile', $order);
 
@@ -62,6 +62,7 @@ Route::middleware(['auth'])->group(function () {
             'staff' => redirect()->route('staff.dashboard'),
             'cashier' => redirect()->route('cashier.dashboard'),
             'owner' => redirect()->route('owner.dashboard'),
+            'super_admin' => redirect()->route('super-admin.staff'),
             default => abort(403),
         };
     })->name('dashboard');
@@ -124,6 +125,9 @@ Route::middleware(['auth'])->group(function () {
         Route::livewire('owner/dashboard', 'pages::owner.dashboard')
             ->name('owner.dashboard');
 
+        Route::livewire('owner/reports', 'pages::owner.reports')
+            ->name('owner.reports');
+
         Route::livewire('owner/monitoring', 'pages::owner.monitoring')
             ->name('owner.monitoring');
 
@@ -150,6 +154,14 @@ Route::middleware(['auth'])->group(function () {
 
         Route::livewire('owner/orders/{order}', 'pages::staff.order-details')
             ->name('owner.orders.show');
+    });
+
+    Route::middleware('role:super_admin')->group(function () {
+        Route::livewire('super-admin/staff', 'pages::super-admin.staff-accounts')
+            ->name('super-admin.staff');
+
+        Route::livewire('super-admin/audit-logs', 'pages::owner.audit-logs')
+            ->name('super-admin.audit-logs');
     });
 });
 Route::middleware(['guest', 'throttle:20,1'])->group(function () {

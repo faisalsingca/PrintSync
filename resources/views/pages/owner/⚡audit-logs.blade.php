@@ -61,7 +61,7 @@ new #[Title('Audit Log')] class extends Component
     <header class="grid gap-1">
         <h1 class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">Audit Log</h1>
         <p class="text-sm leading-6 text-[var(--ps-muted)]">
-            A record of who changed the inventory and when. Entries cannot be edited or deleted. Only the owner can see this page.
+            A record of staff and administrator actions. Entries cannot be edited or deleted.
         </p>
     </header>
 
@@ -69,7 +69,7 @@ new #[Title('Audit Log')] class extends Component
         <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-[2fr_1.4fr_1fr_1fr_auto] xl:items-end">
             <div class="grid gap-1">
                 <label for="audit-search" class="text-sm font-medium text-[var(--ps-text)]">Search</label>
-                <input id="audit-search" type="search" wire:model.live.debounce.400ms="search" class="ps-input" placeholder="Person, material, or details">
+                <input id="audit-search" type="search" wire:model.live.debounce.400ms="search" class="ps-input" placeholder="Person or activity details">
             </div>
             <div class="grid gap-1">
                 <label for="audit-action" class="text-sm font-medium text-[var(--ps-text)]">Action</label>
@@ -121,7 +121,7 @@ new #[Title('Audit Log')] class extends Component
                 </li>
             @empty
                 <li class="px-5 py-8 text-sm text-[var(--ps-muted)]">
-                    No entries match. Inventory changes are recorded here as they happen. To add what happened before the audit log existed, run: php artisan audit:backfill-inventory
+                    No entries match. Actions are recorded here as they happen. To add earlier inventory changes, run: php artisan audit:backfill-inventory
                 </li>
             @endforelse
         </ul>
