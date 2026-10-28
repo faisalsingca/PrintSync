@@ -10,4 +10,9 @@ class UserPolicy
     {
         return $user->role === 'super_admin';
     }
+
+    public function viewCustomerAccounts(User $user): bool
+    {
+        return $user->role === 'super_admin';
+    }
 }

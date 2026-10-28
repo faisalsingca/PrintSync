@@ -38,6 +38,7 @@
             ['Audit Log', 'shield-check', route('owner.audit-logs'), request()->routeIs('owner.audit-logs')],
         ],
         'super_admin' => [
+            ['Customer Accounts', 'user-group', route('super-admin.customers'), request()->routeIs('super-admin.customers')],
             ['Staff Accounts', 'users', route('super-admin.staff'), request()->routeIs('super-admin.staff')],
             ['Audit Log', 'shield-check', route('super-admin.audit-logs'), request()->routeIs('super-admin.audit-logs')],
         ],

@@ -32,9 +32,6 @@ class CreateNewUser implements CreatesNewUsers
             'role' => 'customer',
         ]);
 
-        // Demo setting: treat new accounts as already verified.
-        $user->forceFill(['email_verified_at' => now()])->save();
-
         return $user;
     }
 }

@@ -67,7 +67,7 @@ Route::middleware(['auth', 'active'])->group(function () {
         };
     })->name('dashboard');
 
-    Route::middleware('role:customer')->group(function () {
+    Route::middleware(['role:customer', 'verified'])->group(function () {
         Route::livewire('customer/dashboard', 'pages::customer.dashboard')
             ->name('customer.dashboard');
 
@@ -157,6 +157,9 @@ Route::middleware(['auth', 'active'])->group(function () {
     });
 
     Route::middleware('role:super_admin')->group(function () {
+        Route::livewire('super-admin/customers', 'pages::super-admin.customer-accounts')
+            ->name('super-admin.customers');
+
         Route::livewire('super-admin/staff', 'pages::super-admin.staff-accounts')
             ->name('super-admin.staff');
 

@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Support\Facades\Notification;
 use Laravel\Fortify\Features;
 
@@ -27,7 +28,8 @@ test('public registration always assigns the customer role', function () {
     ]);
 
     $response->assertSessionHasNoErrors()
-        ->assertRedirect(route('dashboard', absolute: false));
+        ->assertRedirect(route('verification.notice'))
+        ->assertSessionHas('status', 'verification-link-sent');
 
     $this->assertAuthenticated();
     $this->assertDatabaseHas('users', [
@@ -38,7 +40,13 @@ test('public registration always assigns the customer role', function () {
 
     $user = User::where('email', 'test@example.com')->firstOrFail();
 
-    // New accounts are treated as verified straight away, so no verification email is sent.
-    expect($user->hasVerifiedEmail())->toBeTrue();
-    Notification::assertNothingSent();
+    expect($user->hasVerifiedEmail())->toBeFalse();
+    Notification::assertSentTo($user, VerifyEmail::class);
+
+    $this->get(route('verification.notice'))
+        ->assertOk()
+        ->assertSeeText('A new verification link has been sent to the email address you provided during registration.');
+
+    $this->get(route('customer.dashboard'))
+        ->assertRedirect(route('verification.notice'));
 });

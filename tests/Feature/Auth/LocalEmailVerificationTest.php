@@ -1,10 +1,11 @@
 <?php
 
 use App\Models\User;
+use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Support\Facades\Notification;
 
-test('local registrations do not require email verification or send a verification notification', function () {
+test('local registrations require email verification and send a verification notification', function () {
     if (! app()->environment('local')) {
         $this->markTestSkipped('This behavior is enabled only in the local environment.');
     }
@@ -21,7 +22,8 @@ test('local registrations do not require email verification or send a verificati
     ]);
 
     $response->assertSessionHasNoErrors()
-        ->assertRedirect(route('dashboard', absolute: false));
+        ->assertRedirect(route('verification.notice'))
+        ->assertSessionHas('status', 'verification-link-sent');
 
     $this->assertAuthenticated();
 
@@ -29,8 +31,8 @@ test('local registrations do not require email verification or send a verificati
 
     expect($user->hasVerifiedEmail())->toBeFalse();
 
-    $this->get(route('customer.dashboard'))->assertOk();
+    $this->get(route('customer.dashboard'))->assertRedirect(route('verification.notice'));
     $this->get(route('appearance.edit'))->assertOk();
 
-    Notification::assertNothingSent();
+    Notification::assertSentTo($user, VerifyEmail::class);
 });

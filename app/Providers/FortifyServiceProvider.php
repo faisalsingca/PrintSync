@@ -7,6 +7,7 @@ use App\Actions\Fortify\ResetUserPassword;
 use App\Actions\Fortify\SendLoginOtp;
 use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
@@ -17,6 +18,7 @@ use Laravel\Fortify\Actions\CanonicalizeUsername;
 use Laravel\Fortify\Actions\EnsureLoginIsNotThrottled;
 use Laravel\Fortify\Actions\PrepareAuthenticatedSession;
 use Laravel\Fortify\Contracts\RedirectsIfTwoFactorAuthenticatable;
+use Laravel\Fortify\Contracts\RegisterResponse;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
 
@@ -27,7 +29,19 @@ class FortifyServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->instance(RegisterResponse::class, new class implements RegisterResponse
+        {
+            public function toResponse($request)
+            {
+                if ($request->wantsJson()) {
+                    return new JsonResponse('', 201);
+                }
+
+                return redirect()
+                    ->route('verification.notice')
+                    ->with('status', 'verification-link-sent');
+            }
+        });
     }
 
     /**
