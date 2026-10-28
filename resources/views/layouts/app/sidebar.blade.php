@@ -12,7 +12,7 @@
     >
         <div class="ps-atmosphere" aria-hidden="true"></div>
 
-        {{-- Right-side vertical navigation (same position for every role) --}}
+        {{-- Left-side vertical navigation (same position for every role) --}}
         <x-app-rail />
         <div class="ps-rail-backdrop lg:hidden" x-cloak x-show="railOpen" x-on:click="railOpen = false"></div>
 

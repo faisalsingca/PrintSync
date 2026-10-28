@@ -43,7 +43,7 @@ new #[Title('Customer Dashboard')] class extends Component
                 </span>
                 <div class="grid gap-2">
                     <h1 class="text-3xl font-semibold tracking-[-0.045em] text-[var(--ps-text)] sm:text-4xl">
-                        Welcome back, {{ auth()->user()->name }}
+                        Welcome, {{ auth()->user()->name }}
                     </h1>
                     <p class="max-w-xl text-sm leading-6 text-[var(--ps-muted)] sm:text-base">
                         Your print projects, moving from idea to finished.
@@ -56,9 +56,7 @@ new #[Title('Customer Dashboard')] class extends Component
                 wire:navigate
                 class="ps-button-primary w-full shrink-0 sm:w-auto"
             >
-                <span class="grid size-5 place-items-center rounded-full bg-black/10 text-base leading-none" aria-hidden="true">+</span>
                 Create New Order
-                <span class="text-base leading-none" aria-hidden="true">↗</span>
             </a>
         </div>
     </section>

@@ -49,7 +49,7 @@
 <aside id="ps-rail" class="ps-rail" x-bind:data-open="railOpen ? '' : null" aria-label="Main navigation">
     <div class="ps-rail-brand">
         <a href="{{ route('dashboard') }}" wire:navigate class="flex items-center gap-3">
-            <img src="{{ asset('images/rpg-prints-logo.png') }}" alt="RPG Prints" class="ps-brand-logo">
+            <img src="{{ asset('images/rpg-prints-logo.jpg') }}" alt="RPG Prints" class="ps-brand-logo">
             <span>PrintSync</span>
         </a>
         <button type="button" class="ms-auto lg:hidden" x-on:click="railOpen = false" aria-label="Close navigation menu">

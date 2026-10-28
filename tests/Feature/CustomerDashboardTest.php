@@ -26,7 +26,7 @@ test('customer dashboard shows the authenticated customer order summary and rece
     $this->actingAs($customer)
         ->get(route('customer.dashboard'))
         ->assertOk()
-        ->assertSee('Welcome back, Morgan Print')
+        ->assertSee('Welcome, Morgan Print')
         ->assertSee('Create New Order')
         ->assertSee(route('customer.orders.create'))
         ->assertSee('Active Orders')

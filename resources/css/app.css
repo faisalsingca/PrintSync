@@ -172,7 +172,7 @@ select:focus[data-flux-control] {
 .ps-rail {
     position: fixed;
     inset-block: 0;
-    inset-inline-end: 0;
+    inset-inline-start: 0;
     z-index: 40;
     display: flex;
     width: 16rem;
@@ -181,7 +181,7 @@ select:focus[data-flux-control] {
     flex-direction: column;
     gap: 1rem;
     overflow-y: auto;
-    border-inline-start: 1px solid var(--ps-border);
+    border-inline-end: 1px solid var(--ps-border);
     background: var(--ps-elevated);
     padding: 1rem 0.85rem;
     backdrop-filter: blur(22px);
@@ -216,7 +216,7 @@ select:focus[data-flux-control] {
 
 @media (width < 64rem) {
     .ps-rail {
-        transform: translateX(100%);
+        transform: translateX(-100%);
         transition: transform 200ms ease;
         box-shadow: var(--ps-shadow);
     }
@@ -228,7 +228,7 @@ select:focus[data-flux-control] {
 
 @media (min-width: 64rem) {
     .ps-main-shell {
-        padding-inline-end: 16rem;
+        padding-inline-start: 16rem;
     }
 
     .ps-rail-backdrop {
@@ -649,10 +649,10 @@ select:focus[data-flux-control] {
 
 @media (min-width: 64rem) {
     .ps-app-shell.ps-rail-collapsed .ps-rail {
-        transform: translateX(100%);
+        transform: translateX(-100%);
     }
 
     .ps-app-shell.ps-rail-collapsed .ps-main-shell {
-        padding-inline-end: 0;
+        padding-inline-start: 0;
     }
 }
