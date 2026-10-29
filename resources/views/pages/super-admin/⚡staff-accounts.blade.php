@@ -1,15 +1,18 @@
 <?php
 
 use App\Models\AuditLog;
+use App\Models\StaffInvitation;
 use App\Models\User;
+use App\Notifications\StaffAccountInvitation;
 use App\Services\AuditLogService;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 
 new #[Title('Staff Accounts')] class extends Component
 {
@@ -47,43 +50,61 @@ new #[Title('Staff Accounts')] class extends Component
         $this->showCreateStaffModal = true;
     }
 
-    public function createStaffAccount(AuditLogService $auditLog): void
+    public function createStaffAccount(): void
     {
         Gate::authorize('manageStaffAccounts', User::class);
 
+        $this->email = mb_strtolower(trim($this->email));
+
         $validated = $this->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')],
+            'email' => [
+                'required',
+                'email',
+                'max:255',
+                Rule::unique('users', 'email'),
+                Rule::unique('staff_invitations', 'email'),
+            ],
             'role' => ['required', Rule::in(['staff', 'cashier'])],
         ]);
 
-        $user = User::create([
+        $token = Str::random(64);
+        $invitation = StaffInvitation::create([
             'name' => trim($validated['name']),
-            'email' => mb_strtolower(trim($validated['email'])),
-            'password' => Str::password(48),
+            'email' => $validated['email'],
             'role' => $validated['role'],
+            'created_by' => auth()->id(),
+            'token_hash' => hash('sha256', $token),
+            'expires_at' => now()->addDays(7),
         ]);
 
-        $auditLog->record(
-            auth()->user(),
-            'admin.staff_created',
-            "Created a {$user->role} account for {$user->name}.",
-            User::class,
-            $user->id,
-            $user->name,
-            ['role' => $user->role],
-        );
-
-        $user->sendEmailVerificationNotification();
-        $passwordResetStatus = Password::sendResetLink(['email' => $user->email]);
-        $this->statusMessageIsError = $passwordResetStatus !== Password::RESET_LINK_SENT;
-        $this->statusMessage = ! $this->statusMessageIsError
-            ? "Account created. Password setup and email verification links were sent to {$user->email}."
-            : "Account created and verification email sent, but the password setup email could not be sent. Check the SMTP configuration and try again.";
+        $this->statusMessageIsError = ! $this->sendStaffInvitation($invitation, $token);
+        $this->statusMessage = $this->statusMessageIsError
+            ? "The invitation for {$invitation->email} is saved, but its email could not be sent. Resend it from the pending invitations list."
+            : "Invitation sent to {$invitation->email}. The account will be created after they confirm and choose a password.";
 
         $this->reset('name', 'email');
         $this->role = 'staff';
         $this->showCreateStaffModal = false;
+    }
+
+    public function resendStaffInvitation(int $invitationId): void
+    {
+        Gate::authorize('manageStaffAccounts', User::class);
+
+        $invitation = StaffInvitation::query()->findOrFail($invitationId);
+        $token = Str::random(64);
+
+        $invitation->forceFill([
+            'token_hash' => hash('sha256', $token),
+            'expires_at' => now()->addDays(7),
+            'email_sent_at' => null,
+        ])->save();
+
+        $this->statusMessageIsError = ! $this->sendStaffInvitation($invitation, $token);
+        $this->statusMessage = $this->statusMessageIsError
+            ? "The invitation email could not be sent to {$invitation->email}. Check the mail configuration and try again."
+            : "A new invitation was sent to {$invitation->email}.";
     }
 
     public function requestStaffAccountStatusChange(int $userId): void
@@ -149,6 +170,41 @@ new #[Title('Staff Accounts')] class extends Component
             ->orderBy('name')
             ->get();
     }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Collection<int, StaffInvitation>
+     */
+    public function pendingStaffInvitations(): \Illuminate\Database\Eloquent\Collection
+    {
+        Gate::authorize('manageStaffAccounts', User::class);
+
+        return StaffInvitation::query()
+            ->latest('created_at')
+            ->get();
+    }
+
+    private function sendStaffInvitation(StaffInvitation $invitation, string $token): bool
+    {
+        $acceptUrl = URL::temporarySignedRoute(
+            'staff-invitations.show',
+            $invitation->expires_at,
+            ['token' => $token],
+        );
+
+        try {
+            Notification::route('mail', $invitation->email)->notify(
+                new StaffAccountInvitation($invitation->name, $invitation->role, $acceptUrl),
+            );
+        } catch (TransportExceptionInterface $exception) {
+            report($exception);
+
+            return false;
+        }
+
+        $invitation->forceFill(['email_sent_at' => now()])->save();
+
+        return true;
+    }
 };
 ?>
 
@@ -198,13 +254,48 @@ new #[Title('Staff Accounts')] class extends Component
                 </tbody>
             </table>
         </div>
+
+        <div class="grid gap-3">
+            <div class="grid gap-1">
+                <h2 class="text-xl font-semibold text-[var(--ps-text)]">Pending invitations</h2>
+                <p class="text-sm text-[var(--ps-muted)]">An employee account is added only after the recipient confirms the invitation and sets a password.</p>
+            </div>
+
+            <div class="ps-glass overflow-x-auto">
+                <table class="w-full min-w-[38rem] text-left text-sm">
+                    <thead class="border-b border-[var(--ps-border)] text-[var(--ps-muted)]">
+                        <tr><th class="px-4 py-3 font-medium">Name</th><th class="px-4 py-3 font-medium">Email</th><th class="px-4 py-3 font-medium">Role</th><th class="px-4 py-3 font-medium">Status</th><th class="px-4 py-3"><span class="sr-only">Invitation action</span></th></tr>
+                    </thead>
+                    <tbody class="divide-y divide-[var(--ps-border)]">
+                        @forelse ($this->pendingStaffInvitations() as $staffInvitation)
+                            <tr wire:key="staff-invitation-{{ $staffInvitation->id }}">
+                                <td class="px-4 py-3 font-medium text-[var(--ps-text)]">{{ $staffInvitation->name }}</td>
+                                <td class="px-4 py-3 text-[var(--ps-muted)]">{{ $staffInvitation->email }}</td>
+                                <td class="px-4 py-3 capitalize text-[var(--ps-text)]">{{ $staffInvitation->role }}</td>
+                                <td class="px-4 py-3">
+                                    <x-status-badge
+                                        :tone="$staffInvitation->email_sent_at === null || $staffInvitation->expires_at->isPast() ? 'warning' : 'info'"
+                                        :label="$staffInvitation->email_sent_at === null ? 'Email not sent' : ($staffInvitation->expires_at->isPast() ? 'Expired' : 'Waiting for confirmation')"
+                                    />
+                                </td>
+                                <td class="px-4 py-3 text-right">
+                                    <button type="button" wire:click="resendStaffInvitation({{ $staffInvitation->id }})" wire:loading.attr="disabled" wire:target="resendStaffInvitation" class="ps-button-secondary">Resend invitation</button>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr><td colspan="5" class="px-4 py-8 text-center text-[var(--ps-muted)]">No pending invitations.</td></tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </section>
 
     <flux:modal wire:model.self="showCreateStaffModal" class="max-w-2xl">
         <form wire:submit="createStaffAccount" class="grid gap-5">
             <div class="grid gap-1">
                 <flux:heading size="lg">Create employee account</flux:heading>
-                <flux:text>Enter the employee's details and choose their account type.</flux:text>
+                <flux:text>Enter the employee's details and choose their account type. They will set their own password after confirming by email.</flux:text>
             </div>
 
             <div class="grid gap-1">

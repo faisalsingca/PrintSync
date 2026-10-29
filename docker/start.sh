@@ -10,6 +10,8 @@ php artisan package:discover --ansi
 php artisan config:cache
 php artisan storage:link || true
 php artisan migrate --force
+# SUPER_ADMIN_RECOVERY reapplies configured admin credentials on every startup while enabled.
+# Disable it in the deployment environment immediately after a successful recovery deploy.
 php artisan db:seed --class=SuperAdminSeeder --force
 
 # Creates the demo accounts (safe to repeat; it never changes existing ones)

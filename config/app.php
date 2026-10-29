@@ -71,6 +71,7 @@ return [
         'name' => env('SUPER_ADMIN_NAME'),
         'email' => env('SUPER_ADMIN_EMAIL'),
         'password' => env('SUPER_ADMIN_PASSWORD'),
+        'recovery_enabled' => (bool) env('SUPER_ADMIN_RECOVERY', false),
     ],
 
     /*

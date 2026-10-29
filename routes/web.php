@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginOtpController;
+use App\Http\Controllers\StaffInvitationController;
 use App\Models\Order;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -172,4 +173,16 @@ Route::middleware(['guest', 'throttle:20,1'])->group(function () {
     Route::post('login/verify', [LoginOtpController::class, 'verify'])->name('otp.verify');
     Route::post('login/verify/resend', [LoginOtpController::class, 'resend'])->name('otp.resend');
 });
+
+Route::middleware('throttle:10,1')->group(function () {
+    Route::get('staff-invitations/{token}', [StaffInvitationController::class, 'show'])
+        ->middleware('signed')
+        ->where('token', '[A-Za-z0-9]{64}')
+        ->name('staff-invitations.show');
+
+    Route::post('staff-invitations/{token}', [StaffInvitationController::class, 'accept'])
+        ->where('token', '[A-Za-z0-9]{64}')
+        ->name('staff-invitations.accept');
+});
+
 require __DIR__.'/settings.php';
