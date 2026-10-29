@@ -1,6 +1,7 @@
 <?php
 
 use App\Concerns\ProfileValidationRules;
+use App\Notifications\EmailAddressChanged;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
@@ -36,12 +37,18 @@ new #[Title('Profile settings')] class extends Component {
         $validated = $this->validate($this->profileRules($user->id));
 
         $user->fill($validated);
+        $emailChanged = $user->isDirty('email');
 
-        if ($user->isDirty('email')) {
+        if ($emailChanged) {
             $user->email_verified_at = null;
         }
 
         $user->save();
+
+        if ($emailChanged) {
+            $user->sendEmailVerificationNotification();
+            $user->notify(new EmailAddressChanged);
+        }
 
         Flux::toast(variant: 'success', text: __('Profile updated.'));
     }

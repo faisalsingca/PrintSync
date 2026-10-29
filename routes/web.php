@@ -81,7 +81,7 @@ Route::middleware(['auth', 'active'])->group(function () {
             ->name('customer.orders.show');
     });
 
-    Route::middleware('role:staff')->group(function () {
+    Route::middleware(['role:staff', 'verified'])->group(function () {
         Route::livewire('staff/dashboard', 'pages::staff.dashboard')
             ->name('staff.dashboard');
 
@@ -95,7 +95,7 @@ Route::middleware(['auth', 'active'])->group(function () {
             ->name('staff.inventory');
     });
 
-    Route::middleware('role:cashier')->group(function () {
+    Route::middleware(['role:cashier', 'verified'])->group(function () {
         Route::livewire('cashier/dashboard', 'pages::cashier.dashboard')
             ->name('cashier.dashboard');
 

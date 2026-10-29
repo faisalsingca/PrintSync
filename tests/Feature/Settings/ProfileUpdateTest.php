@@ -1,6 +1,9 @@
 <?php
 
 use App\Models\User;
+use App\Notifications\EmailAddressChanged;
+use Illuminate\Auth\Notifications\VerifyEmail;
+use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
 
 test('profile page is displayed', function () {
@@ -11,6 +14,8 @@ test('profile page is displayed', function () {
 
 test('profile information can be updated', function () {
     $user = User::factory()->create();
+
+    Notification::fake();
 
     $this->actingAs($user);
 
@@ -26,6 +31,13 @@ test('profile information can be updated', function () {
     expect($user->name)->toEqual('Test User');
     expect($user->email)->toEqual('test@example.com');
     expect($user->email_verified_at)->toBeNull();
+
+    Notification::assertSentTo($user, VerifyEmail::class);
+    Notification::assertSentTo($user, EmailAddressChanged::class, function (EmailAddressChanged $notification, array $channels) use ($user): bool {
+        return in_array('mail', $channels, true)
+            && $notification->toMail($user)->subject === 'Security alert: your email address was changed'
+            && in_array('Your new email address is test@example.com.', $notification->toMail($user)->introLines, true);
+    });
 });
 
 test('email verification status is unchanged when email address is unchanged', function () {

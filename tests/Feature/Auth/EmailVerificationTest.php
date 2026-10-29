@@ -45,6 +45,23 @@ test('email can be verified', function () {
     $response->assertRedirect(route('dashboard', absolute: false).'?verified=1');
 });
 
+test('verified staff are redirected to their role dashboard', function () {
+    $staff = User::factory()->unverified()->create(['role' => 'staff']);
+
+    $verificationUrl = URL::temporarySignedRoute(
+        'verification.verify',
+        now()->addMinutes(60),
+        ['id' => $staff->id, 'hash' => sha1($staff->email)],
+    );
+
+    $this->actingAs($staff)
+        ->get($verificationUrl)
+        ->assertRedirect(route('dashboard', absolute: false).'?verified=1');
+
+    $this->get(route('dashboard'))
+        ->assertRedirect(route('staff.dashboard'));
+});
+
 test('email is not verified with invalid hash', function () {
     $user = User::factory()->unverified()->create();
 

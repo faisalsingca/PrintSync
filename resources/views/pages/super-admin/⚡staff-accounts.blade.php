@@ -23,9 +23,28 @@ new #[Title('Staff Accounts')] class extends Component
 
     public string $statusMessage = '';
 
+    public bool $statusMessageIsError = false;
+
+    public bool $showCreateStaffModal = false;
+
+    public bool $showStaffStatusConfirmationModal = false;
+
+    public ?int $pendingStaffAccountId = null;
+
     public function mount(): void
     {
         Gate::authorize('manageStaffAccounts', User::class);
+    }
+
+    public function openCreateStaffModal(): void
+    {
+        Gate::authorize('manageStaffAccounts', User::class);
+
+        $this->resetValidation();
+        $this->reset('name', 'email');
+        $this->role = 'staff';
+        $this->statusMessage = '';
+        $this->showCreateStaffModal = true;
     }
 
     public function createStaffAccount(AuditLogService $auditLog): void
@@ -55,21 +74,39 @@ new #[Title('Staff Accounts')] class extends Component
             ['role' => $user->role],
         );
 
-        $this->statusMessage = Password::sendResetLink(['email' => $user->email]) === Password::RESET_LINK_SENT
-            ? "Account created. A password setup link was sent to {$user->email}."
-            : "Account created, but the password setup email could not be sent. Check the email configuration and try again.";
+        $user->sendEmailVerificationNotification();
+        $passwordResetStatus = Password::sendResetLink(['email' => $user->email]);
+        $this->statusMessageIsError = $passwordResetStatus !== Password::RESET_LINK_SENT;
+        $this->statusMessage = ! $this->statusMessageIsError
+            ? "Account created. Password setup and email verification links were sent to {$user->email}."
+            : "Account created and verification email sent, but the password setup email could not be sent. Check the SMTP configuration and try again.";
 
         $this->reset('name', 'email');
         $this->role = 'staff';
+        $this->showCreateStaffModal = false;
     }
 
-    public function toggleStaffAccount(int $userId, AuditLogService $auditLog): void
+    public function requestStaffAccountStatusChange(int $userId): void
     {
         Gate::authorize('manageStaffAccounts', User::class);
 
-        $user = User::query()
+        User::query()
             ->whereIn('role', ['staff', 'cashier'])
             ->findOrFail($userId);
+
+        $this->pendingStaffAccountId = $userId;
+        $this->showStaffStatusConfirmationModal = true;
+    }
+
+    public function confirmStaffAccountStatusChange(AuditLogService $auditLog): void
+    {
+        Gate::authorize('manageStaffAccounts', User::class);
+
+        abort_if($this->pendingStaffAccountId === null, 404);
+
+        $user = User::query()
+            ->whereIn('role', ['staff', 'cashier'])
+            ->findOrFail($this->pendingStaffAccountId);
 
         $user->is_active = ! $user->is_active;
         $user->save();
@@ -88,6 +125,9 @@ new #[Title('Staff Accounts')] class extends Component
         );
 
         $this->statusMessage = "{$user->name}'s account was {$actionText}.";
+        $this->statusMessageIsError = false;
+        $this->pendingStaffAccountId = null;
+        $this->showStaffStatusConfirmationModal = false;
     }
 
     /**
@@ -119,36 +159,15 @@ new #[Title('Staff Accounts')] class extends Component
     </header>
 
     @if ($statusMessage !== '')
-        <div role="status" class="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-[var(--ps-text)]">{{ $statusMessage }}</div>
+        <div role="status" class="rounded-lg border px-4 py-3 text-sm text-[var(--ps-text)] {{ $statusMessageIsError ? 'border-red-500/40 bg-red-500/10' : 'border-emerald-500/40 bg-emerald-500/10' }}">{{ $statusMessage }}</div>
     @endif
-
-    <form wire:submit="createStaffAccount" class="ps-glass grid gap-5 p-5 sm:grid-cols-2 sm:p-6">
-        <div class="grid gap-1">
-            <label for="staff-name" class="text-sm font-medium text-[var(--ps-text)]">Name</label>
-            <input id="staff-name" type="text" wire:model="name" class="ps-input" maxlength="255" required>
-            @error('name') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-        </div>
-        <div class="grid gap-1">
-            <label for="staff-email" class="text-sm font-medium text-[var(--ps-text)]">Email</label>
-            <input id="staff-email" type="email" wire:model="email" class="ps-input" maxlength="255" required>
-            @error('email') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-        </div>
-        <div class="grid gap-1">
-            <label for="staff-role" class="text-sm font-medium text-[var(--ps-text)]">Account type</label>
-            <select id="staff-role" wire:model="role" class="ps-input" required>
-                <option value="staff">Staff</option>
-                <option value="cashier">Cashier</option>
-            </select>
-            @error('role') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-        </div>
-        <div class="flex items-end">
-            <button type="submit" class="ps-button-primary" wire:loading.attr="disabled" wire:target="createStaffAccount">Create account</button>
-        </div>
-    </form>
 
     <section class="grid gap-4" aria-label="Employee accounts">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <h2 class="text-xl font-semibold text-[var(--ps-text)]">Employee accounts</h2>
+            <div class="grid gap-3 sm:flex sm:items-center sm:justify-between sm:flex-1">
+                <h2 class="text-xl font-semibold text-[var(--ps-text)]">Employee accounts</h2>
+                <button type="button" wire:click="openCreateStaffModal" class="ps-button-primary">Create staff account</button>
+            </div>
             <div class="grid gap-1 sm:w-80">
                 <label for="staff-search" class="text-sm font-medium text-[var(--ps-text)]">Search</label>
                 <input id="staff-search" type="search" wire:model.live.debounce.300ms="search" class="ps-input" placeholder="Name or email">
@@ -168,7 +187,7 @@ new #[Title('Staff Accounts')] class extends Component
                             <td class="px-4 py-3 capitalize text-[var(--ps-text)]">{{ $staffAccount->role }}</td>
                             <td class="px-4 py-3"><x-status-badge :tone="$staffAccount->is_active ? 'success' : 'danger'" :label="$staffAccount->is_active ? 'Active' : 'Deactivated'" /></td>
                             <td class="px-4 py-3 text-right">
-                                <button type="button" wire:click="toggleStaffAccount({{ $staffAccount->id }})" wire:confirm="{{ $staffAccount->is_active ? 'Deactivate' : 'Reactivate' }} this account?" class="ps-button-secondary">
+                                <button type="button" wire:click="requestStaffAccountStatusChange({{ $staffAccount->id }})" class="ps-button-secondary">
                                     {{ $staffAccount->is_active ? 'Deactivate' : 'Activate' }}
                                 </button>
                             </td>
@@ -180,4 +199,57 @@ new #[Title('Staff Accounts')] class extends Component
             </table>
         </div>
     </section>
+
+    <flux:modal wire:model.self="showCreateStaffModal" class="max-w-2xl">
+        <form wire:submit="createStaffAccount" class="grid gap-5">
+            <div class="grid gap-1">
+                <flux:heading size="lg">Create employee account</flux:heading>
+                <flux:text>Enter the employee's details and choose their account type.</flux:text>
+            </div>
+
+            <div class="grid gap-1">
+                <label for="staff-name" class="text-sm font-medium text-[var(--ps-text)]">Name</label>
+                <input id="staff-name" type="text" wire:model="name" class="ps-input" maxlength="255" required>
+                @error('name') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+            </div>
+
+            <div class="grid gap-1">
+                <label for="staff-email" class="text-sm font-medium text-[var(--ps-text)]">Email</label>
+                <input id="staff-email" type="email" wire:model="email" class="ps-input" maxlength="255" required>
+                @error('email') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+            </div>
+
+            <div class="grid gap-1">
+                <label for="staff-role" class="text-sm font-medium text-[var(--ps-text)]">Account type</label>
+                <select id="staff-role" wire:model="role" class="ps-input" required>
+                    <option value="staff">Staff</option>
+                    <option value="cashier">Cashier</option>
+                </select>
+                @error('role') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+            </div>
+
+            <div class="flex justify-end gap-2">
+                <flux:modal.close>
+                    <button type="button" class="ps-button-secondary">Cancel</button>
+                </flux:modal.close>
+                <button type="submit" class="ps-button-primary" wire:loading.attr="disabled" wire:target="createStaffAccount">Create account</button>
+            </div>
+        </form>
+    </flux:modal>
+
+    <flux:modal wire:model.self="showStaffStatusConfirmationModal" class="max-w-lg">
+        <div class="grid gap-5">
+            <div class="grid gap-1">
+                <flux:heading size="lg">Change staff account status?</flux:heading>
+                <flux:text>This changes whether the selected employee can sign in.</flux:text>
+            </div>
+
+            <div class="flex justify-end gap-2">
+                <flux:modal.close>
+                    <button type="button" class="ps-button-secondary">Cancel</button>
+                </flux:modal.close>
+                <button type="button" wire:click="confirmStaffAccountStatusChange" wire:loading.attr="disabled" wire:target="confirmStaffAccountStatusChange" class="ps-button-primary">Confirm</button>
+            </div>
+        </div>
+    </flux:modal>
 </div>
