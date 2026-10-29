@@ -46,6 +46,8 @@ class AuditLog extends Model
         'admin.staff_created' => ['Staff account created', 'info'],
         'admin.staff_activated' => ['Staff account activated', 'success'],
         'admin.staff_deactivated' => ['Staff account deactivated', 'warning'],
+        'admin.customer_activated' => ['Customer account activated', 'success'],
+        'admin.customer_deactivated' => ['Customer account deactivated', 'warning'],
         'staff.assignment_accepted' => ['Order accepted', 'success'],
         'staff.assignment_declined' => ['Order declined', 'warning'],
         'staff.order_status_updated' => ['Production status updated', 'info'],

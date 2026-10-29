@@ -15,4 +15,9 @@ class UserPolicy
     {
         return $user->role === 'super_admin';
     }
+
+    public function manageCustomerAccounts(User $user): bool
+    {
+        return $user->role === 'super_admin';
+    }
 }

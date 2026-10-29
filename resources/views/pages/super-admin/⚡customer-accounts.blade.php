@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use App\Services\AuditLogService;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -9,9 +10,38 @@ new #[Title('Customer Accounts')] class extends Component
 {
     public string $search = '';
 
+    public string $statusMessage = '';
+
     public function mount(): void
     {
         Gate::authorize('viewCustomerAccounts', User::class);
+    }
+
+    public function toggleCustomerAccount(int $userId, AuditLogService $auditLog): void
+    {
+        Gate::authorize('manageCustomerAccounts', User::class);
+
+        $customer = User::query()
+            ->where('role', 'customer')
+            ->findOrFail($userId);
+
+        $customer->is_active = ! $customer->is_active;
+        $customer->save();
+
+        $action = $customer->is_active ? 'admin.customer_activated' : 'admin.customer_deactivated';
+        $actionText = $customer->is_active ? 'activated' : 'deactivated';
+
+        $auditLog->record(
+            auth()->user(),
+            $action,
+            "{$customer->name}'s account was {$actionText}.",
+            User::class,
+            $customer->id,
+            $customer->name,
+            ['is_active' => $customer->is_active],
+        );
+
+        $this->statusMessage = "{$customer->name}'s account was {$actionText}.";
     }
 
     /**
@@ -41,8 +71,12 @@ new #[Title('Customer Accounts')] class extends Component
 <div class="super-admin-customer-page grid gap-8">
     <header class="grid gap-1">
         <h1 class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">Customer Accounts</h1>
-        <p class="text-sm leading-6 text-[var(--ps-muted)]">View registered customer contact details and account status.</p>
+        <p class="text-sm leading-6 text-[var(--ps-muted)]">View customer contact details and control whether customer accounts can sign in. Existing orders and activity records remain when an account is deactivated.</p>
     </header>
+
+    @if ($statusMessage !== '')
+        <div role="status" class="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-[var(--ps-text)]">{{ $statusMessage }}</div>
+    @endif
 
     <section class="grid gap-4" aria-label="Customer accounts">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -62,6 +96,7 @@ new #[Title('Customer Accounts')] class extends Component
                         <th class="px-4 py-3 font-medium">Phone</th>
                         <th class="px-4 py-3 font-medium">Status</th>
                         <th class="px-4 py-3 font-medium">Joined</th>
+                        <th class="px-4 py-3"><span class="sr-only">Account action</span></th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-[var(--ps-border)]">
@@ -72,9 +107,14 @@ new #[Title('Customer Accounts')] class extends Component
                             <td class="px-4 py-3 text-[var(--ps-muted)]">{{ $customer->phone ?: '—' }}</td>
                             <td class="px-4 py-3"><x-status-badge :tone="$customer->is_active ? 'success' : 'danger'" :label="$customer->is_active ? 'Active' : 'Deactivated'" /></td>
                             <td class="px-4 py-3 text-[var(--ps-muted)]">{{ $customer->created_at?->format('M j, Y') ?? '—' }}</td>
+                            <td class="px-4 py-3 text-right">
+                                <button type="button" wire:click="toggleCustomerAccount({{ $customer->id }})" wire:confirm="{{ $customer->is_active ? 'Deactivate' : 'Reactivate' }} this account?" wire:loading.attr="disabled" wire:target="toggleCustomerAccount" class="ps-button-secondary">
+                                    {{ $customer->is_active ? 'Deactivate' : 'Activate' }}
+                                </button>
+                            </td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="px-4 py-8 text-center text-[var(--ps-muted)]">No customer accounts found.</td></tr>
+                        <tr><td colspan="6" class="px-4 py-8 text-center text-[var(--ps-muted)]">No customer accounts found.</td></tr>
                     @endforelse
                 </tbody>
             </table>
