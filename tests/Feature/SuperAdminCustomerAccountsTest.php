@@ -59,17 +59,62 @@ test('super admin can deactivate and reactivate customer accounts without removi
 
     $this->actingAs($superAdmin);
 
-    Livewire::test('pages::super-admin.customer-accounts')
-        ->call('toggleCustomerAccount', $customer->id)
+    $component = Livewire::test('pages::super-admin.customer-accounts')
+        ->call('requestCustomerAccountStatusChange', $customer->id)
+        ->assertSet('showCustomerStatusConfirmationModal', true)
+        ->assertSee('Deactivate this account?');
+
+    expect($customer->fresh()->is_active)->toBeTrue();
+
+    $component
+        ->call('confirmCustomerAccountStatusChange')
         ->assertSet('statusMessage', "{$customer->name}'s account was deactivated.")
         ->assertSeeText('Deactivated')
-        ->call('toggleCustomerAccount', $customer->id)
+        ->call('requestCustomerAccountStatusChange', $customer->id)
+        ->assertSee('Reactivate this account?')
+        ->call('confirmCustomerAccountStatusChange')
         ->assertSet('statusMessage', "{$customer->name}'s account was activated.")
         ->assertSeeText('Active');
 
     expect($customer->fresh()->is_active)->toBeTrue()
         ->and(AuditLog::query()->where('subject_id', $customer->id)->pluck('action')->all())
         ->toBe(['admin.customer_deactivated', 'admin.customer_activated']);
+});
+
+test('customer account status confirmation uses the application modal', function () {
+    $superAdmin = User::factory()->create(['role' => 'super_admin']);
+    $customer = User::factory()->create(['role' => 'customer']);
+
+    $this->actingAs($superAdmin);
+
+    Livewire::test('pages::super-admin.customer-accounts')
+        ->assertDontSee('wire:confirm', false)
+        ->call('requestCustomerAccountStatusChange', $customer->id)
+        ->assertSee('Deactivate this account?')
+        ->call('cancelCustomerAccountStatusChange')
+        ->assertSet('showCustomerStatusConfirmationModal', false)
+        ->assertSet('pendingCustomerAccountId', null);
+
+    expect($customer->fresh()->is_active)->toBeTrue()
+        ->and(AuditLog::query()->where('subject_id', $customer->id)->exists())->toBeFalse();
+});
+
+test('customer account confirmation applies the status requested before confirmation', function () {
+    $superAdmin = User::factory()->create(['role' => 'super_admin']);
+    $customer = User::factory()->create(['role' => 'customer']);
+    $this->actingAs($superAdmin);
+
+    $component = Livewire::test('pages::super-admin.customer-accounts')
+        ->call('requestCustomerAccountStatusChange', $customer->id);
+
+    $customer->forceFill(['is_active' => false])->save();
+
+    $component
+        ->call('confirmCustomerAccountStatusChange')
+        ->assertSet('statusMessage', "{$customer->name}'s account is already deactivated.");
+
+    expect($customer->fresh()->is_active)->toBeFalse()
+        ->and(AuditLog::query()->where('subject_id', $customer->id)->exists())->toBeFalse();
 });
 
 test('super admin cannot change the status of a non-customer account from customer monitoring', function () {
@@ -79,7 +124,7 @@ test('super admin cannot change the status of a non-customer account from custom
     $this->actingAs($superAdmin);
 
     Livewire::test('pages::super-admin.customer-accounts')
-        ->call('toggleCustomerAccount', $staff->id)
+        ->call('requestCustomerAccountStatusChange', $staff->id)
         ->assertNotFound();
 
     expect($staff->fresh()->is_active)->toBeTrue()

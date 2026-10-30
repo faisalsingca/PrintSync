@@ -35,6 +35,12 @@ new #[Title('Cashier Inventory')] class extends Component
 
     public string $errorMessage = '';
 
+    public bool $showArchiveConfirmationModal = false;
+
+    public ?int $pendingArchiveMaterialId = null;
+
+    public string $pendingArchiveMaterialName = '';
+
     public function mount(): void
     {
         Gate::authorize('manage', Inventory::class);
@@ -149,16 +155,36 @@ new #[Title('Cashier Inventory')] class extends Component
         $this->reload();
     }
 
-    public function archiveMaterial(int $inventoryId, InventoryService $inventoryService): void
+    public function requestArchiveMaterial(int $inventoryId): void
     {
         Gate::authorize('manage', Inventory::class);
-        $this->clearMessages();
 
         $item = Inventory::query()->active()->findOrFail($inventoryId);
+
+        $this->pendingArchiveMaterialId = $item->inventory_id;
+        $this->pendingArchiveMaterialName = $item->material_name;
+        $this->showArchiveConfirmationModal = true;
+    }
+
+    public function cancelArchiveConfirmation(): void
+    {
+        $this->pendingArchiveMaterialId = null;
+        $this->pendingArchiveMaterialName = '';
+        $this->showArchiveConfirmationModal = false;
+    }
+
+    public function confirmArchiveMaterial(InventoryService $inventoryService): void
+    {
+        Gate::authorize('manage', Inventory::class);
+        abort_if($this->pendingArchiveMaterialId === null, 404);
+        $this->clearMessages();
+
+        $item = Inventory::query()->active()->findOrFail($this->pendingArchiveMaterialId);
 
         $inventoryService->archiveMaterial($item, auth()->user());
 
         $this->successMessage = "{$item->material_name} was archived. You can bring it back from Archived Materials.";
+        $this->cancelArchiveConfirmation();
         $this->reload();
     }
 
@@ -271,8 +297,9 @@ new #[Title('Cashier Inventory')] class extends Component
                             <button type="button" wire:click="startEdit({{ $item->inventory_id }})" class="ps-button-ghost">Edit</button>
                             <button
                                 type="button"
-                                wire:click="archiveMaterial({{ $item->inventory_id }})"
-                                wire:confirm="Archive {{ $item->material_name }}? It leaves the list but its history is kept, and you can restore it later."
+                                wire:click="requestArchiveMaterial({{ $item->inventory_id }})"
+                                wire:loading.attr="disabled"
+                                wire:target="requestArchiveMaterial"
                                 class="ps-button-ghost text-amber-600 dark:text-amber-400"
                             >Archive</button>
                         </div>
@@ -285,4 +312,20 @@ new #[Title('Cashier Inventory')] class extends Component
             @endforelse
         </ul>
     </section>
+
+    <flux:modal wire:model.self="showArchiveConfirmationModal" @cancel="cancelArchiveConfirmation" class="max-w-lg">
+        <div class="grid gap-5">
+            <div class="grid gap-1">
+                <flux:heading size="lg">Archive {{ $pendingArchiveMaterialName }}?</flux:heading>
+                <flux:text>It will leave the active list, but its history will be kept and you can restore it later.</flux:text>
+            </div>
+
+            <div class="flex justify-end gap-2">
+                <flux:modal.close>
+                    <button type="button" wire:click="cancelArchiveConfirmation" class="ps-button-secondary">Cancel</button>
+                </flux:modal.close>
+                <button type="button" wire:click="confirmArchiveMaterial" wire:loading.attr="disabled" wire:target="confirmArchiveMaterial" class="ps-button-primary">Archive material</button>
+            </div>
+        </div>
+    </flux:modal>
 </div>

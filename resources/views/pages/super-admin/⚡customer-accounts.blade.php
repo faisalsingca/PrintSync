@@ -12,12 +12,20 @@ new #[Title('Customer Accounts')] class extends Component
 
     public string $statusMessage = '';
 
+    public bool $showCustomerStatusConfirmationModal = false;
+
+    public ?int $pendingCustomerAccountId = null;
+
+    public string $pendingCustomerAccountName = '';
+
+    public string $pendingCustomerAccountAction = '';
+
     public function mount(): void
     {
         Gate::authorize('viewCustomerAccounts', User::class);
     }
 
-    public function toggleCustomerAccount(int $userId, AuditLogService $auditLog): void
+    public function requestCustomerAccountStatusChange(int $userId): void
     {
         Gate::authorize('manageCustomerAccounts', User::class);
 
@@ -25,23 +33,55 @@ new #[Title('Customer Accounts')] class extends Component
             ->where('role', 'customer')
             ->findOrFail($userId);
 
-        $customer->is_active = ! $customer->is_active;
-        $customer->save();
+        $this->pendingCustomerAccountId = $customer->id;
+        $this->pendingCustomerAccountName = $customer->name;
+        $this->pendingCustomerAccountAction = $customer->is_active ? 'deactivate' : 'reactivate';
+        $this->showCustomerStatusConfirmationModal = true;
+    }
 
-        $action = $customer->is_active ? 'admin.customer_activated' : 'admin.customer_deactivated';
-        $actionText = $customer->is_active ? 'activated' : 'deactivated';
+    public function cancelCustomerAccountStatusChange(): void
+    {
+        $this->pendingCustomerAccountId = null;
+        $this->pendingCustomerAccountName = '';
+        $this->pendingCustomerAccountAction = '';
+        $this->showCustomerStatusConfirmationModal = false;
+    }
 
-        $auditLog->record(
-            auth()->user(),
-            $action,
-            "{$customer->name}'s account was {$actionText}.",
-            User::class,
-            $customer->id,
-            $customer->name,
-            ['is_active' => $customer->is_active],
-        );
+    public function confirmCustomerAccountStatusChange(AuditLogService $auditLog): void
+    {
+        Gate::authorize('manageCustomerAccounts', User::class);
 
-        $this->statusMessage = "{$customer->name}'s account was {$actionText}.";
+        abort_if($this->pendingCustomerAccountId === null, 404);
+        abort_unless(in_array($this->pendingCustomerAccountAction, ['deactivate', 'reactivate'], true), 404);
+
+        $customer = User::query()
+            ->where('role', 'customer')
+            ->findOrFail($this->pendingCustomerAccountId);
+
+        $isActive = $this->pendingCustomerAccountAction === 'reactivate';
+        $statusChanged = (bool) $customer->is_active !== $isActive;
+
+        if ($statusChanged) {
+            $customer->is_active = $isActive;
+            $customer->save();
+
+            $action = $isActive ? 'admin.customer_activated' : 'admin.customer_deactivated';
+            $auditLog->record(
+                auth()->user(),
+                $action,
+                "{$customer->name}'s account was ".($isActive ? 'activated' : 'deactivated').'.',
+                User::class,
+                $customer->id,
+                $customer->name,
+                ['is_active' => $customer->is_active],
+            );
+        }
+
+        $actionText = $isActive ? 'activated' : 'deactivated';
+        $this->statusMessage = $statusChanged
+            ? "{$customer->name}'s account was {$actionText}."
+            : "{$customer->name}'s account is already {$actionText}.";
+        $this->cancelCustomerAccountStatusChange();
     }
 
     /**
@@ -108,7 +148,7 @@ new #[Title('Customer Accounts')] class extends Component
                             <td class="px-4 py-3"><x-status-badge :tone="$customer->is_active ? 'success' : 'danger'" :label="$customer->is_active ? 'Active' : 'Deactivated'" /></td>
                             <td class="px-4 py-3 text-[var(--ps-muted)]">{{ $customer->created_at?->format('M j, Y') ?? '—' }}</td>
                             <td class="px-4 py-3 text-right">
-                                <button type="button" wire:click="toggleCustomerAccount({{ $customer->id }})" wire:confirm="{{ $customer->is_active ? 'Deactivate' : 'Reactivate' }} this account?" wire:loading.attr="disabled" wire:target="toggleCustomerAccount" class="ps-button-secondary">
+                                <button type="button" wire:click="requestCustomerAccountStatusChange({{ $customer->id }})" wire:loading.attr="disabled" wire:target="requestCustomerAccountStatusChange" class="ps-button-secondary">
                                     {{ $customer->is_active ? 'Deactivate' : 'Activate' }}
                                 </button>
                             </td>
@@ -120,4 +160,25 @@ new #[Title('Customer Accounts')] class extends Component
             </table>
         </div>
     </section>
+
+    <flux:modal wire:model.self="showCustomerStatusConfirmationModal" @cancel="cancelCustomerAccountStatusChange" class="max-w-lg">
+        <div class="grid gap-5">
+            <div class="grid gap-1">
+                <flux:heading size="lg">{{ $pendingCustomerAccountAction === 'deactivate' ? 'Deactivate this account?' : 'Reactivate this account?' }}</flux:heading>
+                <flux:text>
+                    {{ $pendingCustomerAccountName }}
+                    {{ $pendingCustomerAccountAction === 'deactivate' ? 'will no longer be able to sign in.' : 'will be able to sign in again.' }}
+                </flux:text>
+            </div>
+
+            <div class="flex justify-end gap-2">
+                <flux:modal.close>
+                    <button type="button" wire:click="cancelCustomerAccountStatusChange" class="ps-button-secondary">Cancel</button>
+                </flux:modal.close>
+                <button type="button" wire:click="confirmCustomerAccountStatusChange" wire:loading.attr="disabled" wire:target="confirmCustomerAccountStatusChange" class="ps-button-primary">
+                    {{ $pendingCustomerAccountAction === 'deactivate' ? 'Deactivate account' : 'Reactivate account' }}
+                </button>
+            </div>
+        </div>
+    </flux:modal>
 </div>

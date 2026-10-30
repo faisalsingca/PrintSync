@@ -132,7 +132,13 @@ test('archiving hides a material and restoring brings it back', function () {
 
     $component = Livewire::test('pages::cashier.inventory')
         ->assertSee('Banner Mesh')
-        ->call('archiveMaterial', $item->inventory_id);
+        ->call('requestArchiveMaterial', $item->inventory_id)
+        ->assertSet('showArchiveConfirmationModal', true)
+        ->assertSee('Archive Banner Mesh?');
+
+    expect($item->fresh()->archived_at)->toBeNull();
+
+    $component->call('confirmArchiveMaterial');
 
     expect($component->get('inventory')->pluck('material_name')->all())->not->toContain('Banner Mesh');
 
@@ -152,6 +158,26 @@ test('archiving hides a material and restoring brings it back', function () {
     $this->assertDatabaseHas('audit_logs', ['action' => 'inventory.archived', 'subject_id' => $item->inventory_id]);
     $this->assertDatabaseHas('audit_logs', ['action' => 'inventory.restored', 'subject_id' => $item->inventory_id]);
     $this->assertDatabaseCount('inventory', 1);
+});
+
+test('archive confirmation uses the application modal and can be cancelled', function () {
+    $item = inventoryTestItem('Banner Mesh', '30.000');
+    $this->actingAs(inventoryTestCashier());
+
+    Livewire::test('pages::cashier.inventory')
+        ->assertDontSee('wire:confirm', false)
+        ->call('requestArchiveMaterial', $item->inventory_id)
+        ->assertSee('Archive Banner Mesh?')
+        ->call('cancelArchiveConfirmation')
+        ->assertSet('showArchiveConfirmationModal', false)
+        ->assertSet('pendingArchiveMaterialId', null);
+
+    expect($item->fresh()->archived_at)->toBeNull();
+
+    $this->assertDatabaseMissing('audit_logs', [
+        'action' => 'inventory.archived',
+        'subject_id' => $item->inventory_id,
+    ]);
 });
 
 test('stock cannot be added to or deducted from an archived material', function () {
