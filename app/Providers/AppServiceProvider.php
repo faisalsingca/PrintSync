@@ -2,9 +2,11 @@
 
 namespace App\Providers;
 
+use App\Mail\BrevoTransport;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 
@@ -24,6 +26,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->registerBrevoMailTransport();
     }
 
     /**
@@ -46,5 +49,13 @@ class AppServiceProvider extends ServiceProvider
                 ->uncompromised()
             : null,
         );
+    }
+
+    private function registerBrevoMailTransport(): void
+    {
+        Mail::extend('brevo', fn (array $config = []): BrevoTransport => new BrevoTransport(
+            (string) ($config['key'] ?? ''),
+            (int) ($config['timeout'] ?? 10),
+        ));
     }
 }

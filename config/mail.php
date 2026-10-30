@@ -65,6 +65,12 @@ return [
             'transport' => 'resend',
         ],
 
+        'brevo' => [
+            'transport' => 'brevo',
+            'key' => env('BREVO_API_KEY'),
+            'timeout' => env('BREVO_TIMEOUT', 10),
+        ],
+
         'sendmail' => [
             'transport' => 'sendmail',
             'path' => env('MAIL_SENDMAIL_PATH', '/usr/sbin/sendmail -bs -i'),
