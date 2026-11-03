@@ -24,6 +24,8 @@ test('profile information can be updated', function () {
     $response = Livewire::test('pages::settings.profile')
         ->set('name', 'Test User')
         ->set('email', 'test@example.com')
+        ->assertSee('Confirm new email')
+        ->set('emailConfirmation', 'test@example.com')
         ->call('updateProfileInformation');
 
     $response->assertHasNoErrors();
@@ -50,6 +52,33 @@ test('profile information can be updated', function () {
         return $notifiable->routes['mail'] === 'test@example.com';
     });
 });
+
+test('email changes are rejected until the new address is confirmed in the form', function (?string $confirmation, string $rule, string $message) {
+    $user = User::factory()->create(['email' => 'current@example.com']);
+
+    Notification::fake([ApproveEmailChange::class, VerifyPendingEmail::class]);
+
+    $profile = Livewire::actingAs($user)
+        ->test('pages::settings.profile')
+        ->set('email', 'replacement@example.com');
+
+    if ($confirmation !== null) {
+        $profile->set('emailConfirmation', $confirmation);
+    }
+
+    $profile
+        ->call('updateProfileInformation')
+        ->assertHasErrors(['emailConfirmation' => $rule])
+        ->assertSee($message);
+
+    expect($user->fresh()->email)->toBe('current@example.com');
+    $this->assertDatabaseMissing('email_change_requests', ['user_id' => $user->id]);
+    Notification::assertSentOnDemandTimes(ApproveEmailChange::class, 0);
+    Notification::assertSentOnDemandTimes(VerifyPendingEmail::class, 0);
+})->with([
+    'confirmation missing' => [null, 'required', 'Please confirm the new email address.'],
+    'confirmation does not match' => ['replacement-typo@example.com', 'same', 'The email addresses do not match.'],
+]);
 
 test('email verification status is unchanged when email address is unchanged', function () {
     $user = User::factory()->create();

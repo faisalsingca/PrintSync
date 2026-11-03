@@ -15,6 +15,7 @@ new #[Title('Profile settings')] class extends Component {
 
     public string $name = '';
     public string $email = '';
+    public string $emailConfirmation = '';
     public string $phone = '';
 
     /**
@@ -34,7 +35,22 @@ new #[Title('Profile settings')] class extends Component {
     {
         $user = Auth::user();
 
-        $validated = $this->validate($this->profileRules($user->id));
+        $pendingEmailChange = $user->emailChangeRequest;
+        $requiresEmailConfirmation = $this->email !== $user->email
+            && $this->email !== $pendingEmailChange?->new_email;
+
+        $rules = $this->profileRules($user->id);
+        $validationMessages = [];
+
+        if ($requiresEmailConfirmation) {
+            $rules['emailConfirmation'] = ['required', 'email', 'same:email'];
+            $validationMessages = [
+                'emailConfirmation.required' => __('Please confirm the new email address.'),
+                'emailConfirmation.same' => __('The email addresses do not match.'),
+            ];
+        }
+
+        $validated = $this->validate($rules, $validationMessages);
         $emailChanged = $validated['email'] !== $user->email;
 
         if ($emailChanged) {
@@ -127,7 +143,21 @@ new #[Title('Profile settings')] class extends Component {
                     {{ __('Current email address: :email', ['email' => Auth::user()->email]) }}
                 </flux:text>
 
-                <flux:input wire:model="email" :label="__('Email')" type="email" required autocomplete="email" />
+                <flux:input wire:model.live="email" :label="__('Email')" type="email" required autocomplete="email" />
+
+                @if ($email !== Auth::user()->email && $email !== $pendingEmailChange?->new_email)
+                    <flux:input
+                        wire:model="emailConfirmation"
+                        :label="__('Confirm new email')"
+                        type="email"
+                        required
+                        autocomplete="off"
+                    />
+                    <flux:text class="mt-2">
+                        {{ __('Enter the new address again to catch typing mistakes. We will send the verification email only if both addresses match.') }}
+                    </flux:text>
+                    @error('emailConfirmation') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+                @endif
 
                 @if ($pendingEmailChange)
                     <div class="mt-4 space-y-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
