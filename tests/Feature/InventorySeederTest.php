@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Inventory;
+use App\Models\InventorySpecialty;
 use Database\Seeders\InventorySeeder;
 
 test('inventory seeding adds sample materials once and preserves existing stock', function () {
@@ -73,6 +74,11 @@ test('inventory seeding adds sample materials once and preserves existing stock'
         'material_name' => 'Custom Foil',
         'quantity' => '7.000',
     ]);
+
+    expect(InventorySpecialty::query()
+        ->where('inventory_id', $existingSample->inventory_id)
+        ->pluck('specialty')
+        ->all())->toBe(['all']);
 
     expect(
         Inventory::query()

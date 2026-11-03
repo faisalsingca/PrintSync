@@ -5,6 +5,8 @@ use App\Models\StaffInvitation;
 use App\Models\User;
 use App\Notifications\StaffAccountInvitation;
 use App\Services\AuditLogService;
+use App\Services\OrderService;
+use App\StaffSpecialtyType;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\URL;
@@ -21,6 +23,8 @@ new #[Title('Staff Accounts')] class extends Component
     public string $email = '';
 
     public string $role = 'staff';
+
+    public array $specialties = [];
 
     public string $search = '';
 
@@ -44,7 +48,7 @@ new #[Title('Staff Accounts')] class extends Component
         Gate::authorize('manageStaffAccounts', User::class);
 
         $this->resetValidation();
-        $this->reset('name', 'email');
+        $this->reset('name', 'email', 'specialties');
         $this->role = 'staff';
         $this->statusMessage = '';
         $this->showCreateStaffModal = true;
@@ -66,6 +70,8 @@ new #[Title('Staff Accounts')] class extends Component
                 Rule::unique('staff_invitations', 'email'),
             ],
             'role' => ['required', Rule::in(['staff', 'cashier'])],
+            'specialties' => ['array', Rule::when($this->role === 'staff', ['min:1'])],
+            'specialties.*' => ['string', 'distinct', Rule::enum(StaffSpecialtyType::class)],
         ]);
 
         $token = Str::random(64);
@@ -73,6 +79,7 @@ new #[Title('Staff Accounts')] class extends Component
             'name' => trim($validated['name']),
             'email' => $validated['email'],
             'role' => $validated['role'],
+            'specialties' => $validated['role'] === 'staff' ? $validated['specialties'] : null,
             'created_by' => auth()->id(),
             'token_hash' => hash('sha256', $token),
             'expires_at' => now()->addDays(7),
@@ -83,7 +90,7 @@ new #[Title('Staff Accounts')] class extends Component
             ? "The invitation for {$invitation->email} is saved, but its email could not be sent. Resend it from the pending invitations list."
             : "Invitation sent to {$invitation->email}. The account will be created after they confirm and choose a password.";
 
-        $this->reset('name', 'email');
+        $this->reset('name', 'email', 'specialties');
         $this->role = 'staff';
         $this->showCreateStaffModal = false;
     }
@@ -264,7 +271,7 @@ new #[Title('Staff Accounts')] class extends Component
             <div class="ps-glass overflow-x-auto">
                 <table class="w-full min-w-[38rem] text-left text-sm">
                     <thead class="border-b border-[var(--ps-border)] text-[var(--ps-muted)]">
-                        <tr><th class="px-4 py-3 font-medium">Name</th><th class="px-4 py-3 font-medium">Email</th><th class="px-4 py-3 font-medium">Role</th><th class="px-4 py-3 font-medium">Status</th><th class="px-4 py-3"><span class="sr-only">Invitation action</span></th></tr>
+                        <tr><th class="px-4 py-3 font-medium">Name</th><th class="px-4 py-3 font-medium">Email</th><th class="px-4 py-3 font-medium">Role</th><th class="px-4 py-3 font-medium">Specializations</th><th class="px-4 py-3 font-medium">Status</th><th class="px-4 py-3"><span class="sr-only">Invitation action</span></th></tr>
                     </thead>
                     <tbody class="divide-y divide-[var(--ps-border)]">
                         @forelse ($this->pendingStaffInvitations() as $staffInvitation)
@@ -272,6 +279,9 @@ new #[Title('Staff Accounts')] class extends Component
                                 <td class="px-4 py-3 font-medium text-[var(--ps-text)]">{{ $staffInvitation->name }}</td>
                                 <td class="px-4 py-3 text-[var(--ps-muted)]">{{ $staffInvitation->email }}</td>
                                 <td class="px-4 py-3 capitalize text-[var(--ps-text)]">{{ $staffInvitation->role }}</td>
+                                <td class="px-4 py-3 text-[var(--ps-muted)]">
+                                    {{ collect($staffInvitation->specialties ?? [])->map(fn (string $specialty) => StaffSpecialtyType::tryFrom($specialty)?->label())->filter()->implode(', ') ?: '—' }}
+                                </td>
                                 <td class="px-4 py-3">
                                     <x-status-badge
                                         :tone="$staffInvitation->email_sent_at === null || $staffInvitation->expires_at->isPast() ? 'warning' : 'info'"
@@ -283,7 +293,7 @@ new #[Title('Staff Accounts')] class extends Component
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="5" class="px-4 py-8 text-center text-[var(--ps-muted)]">No pending invitations.</td></tr>
+                            <tr><td colspan="6" class="px-4 py-8 text-center text-[var(--ps-muted)]">No pending invitations.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
@@ -318,6 +328,23 @@ new #[Title('Staff Accounts')] class extends Component
                 </select>
                 @error('role') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
             </div>
+
+            @if ($role === 'staff')
+                <fieldset class="grid gap-2">
+                    <legend class="text-sm font-medium text-[var(--ps-text)]">Staff specializations <span class="text-red-500">*</span></legend>
+                    <p class="text-sm text-[var(--ps-muted)]">Select every specialization this staff member will use. At least one is required.</p>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        @foreach (StaffSpecialtyType::cases() as $specialty)
+                            <label wire:key="staff-invite-specialty-{{ $specialty->value }}" class="flex items-center gap-2 text-sm text-[var(--ps-text)]">
+                                <flux:checkbox wire:model="specialties" value="{{ $specialty->value }}" />
+                                <span>{{ $specialty->label() }}</span>
+                            </label>
+                        @endforeach
+                    </div>
+                    @error('specialties') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+                    @error('specialties.*') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+                </fieldset>
+            @endif
 
             <div class="flex justify-end gap-2">
                 <flux:modal.close>

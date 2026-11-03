@@ -1,8 +1,8 @@
 <?php
 
 use App\Models\User;
-use App\Notifications\EmailAddressChanged;
-use Illuminate\Auth\Notifications\VerifyEmail;
+use App\Notifications\ApproveEmailChange;
+use App\Notifications\VerifyPendingEmail;
 use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
 
@@ -14,6 +14,8 @@ test('profile page is displayed', function () {
 
 test('profile information can be updated', function () {
     $user = User::factory()->create();
+    $currentEmail = $user->email;
+    $currentVerifiedAt = $user->email_verified_at;
 
     Notification::fake();
 
@@ -29,14 +31,23 @@ test('profile information can be updated', function () {
     $user->refresh();
 
     expect($user->name)->toEqual('Test User');
-    expect($user->email)->toEqual('test@example.com');
-    expect($user->email_verified_at)->toBeNull();
+    expect($user->email)->toEqual($currentEmail);
+    expect($user->email_verified_at->equalTo($currentVerifiedAt))->toBeTrue();
+    $this->assertDatabaseHas('email_change_requests', [
+        'user_id' => $user->id,
+        'old_email' => $currentEmail,
+        'new_email' => 'test@example.com',
+        'old_approved_at' => null,
+        'new_verified_at' => null,
+    ]);
 
-    Notification::assertSentTo($user, VerifyEmail::class);
-    Notification::assertSentTo($user, EmailAddressChanged::class, function (EmailAddressChanged $notification, array $channels) use ($user): bool {
-        return in_array('mail', $channels, true)
-            && $notification->toMail($user)->subject === 'Security alert: your email address was changed'
-            && in_array('Your new email address is test@example.com.', $notification->toMail($user)->introLines, true);
+    Notification::assertSentOnDemand(ApproveEmailChange::class, function ($notification, array $channels, $notifiable) use ($currentEmail): bool {
+        return $notifiable->routes['mail'] === $currentEmail
+            && $notification->newEmail === 'test@example.com';
+    });
+
+    Notification::assertSentOnDemand(VerifyPendingEmail::class, function ($notification, array $channels, $notifiable): bool {
+        return $notifiable->routes['mail'] === 'test@example.com';
     });
 });
 

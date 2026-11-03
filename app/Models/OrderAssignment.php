@@ -45,6 +45,14 @@ class OrderAssignment extends Model
     }
 
     /**
+     * Get the takeover that covers this assignment, if any.
+     */
+    public function takeover(): BelongsTo
+    {
+        return $this->belongsTo(OrderTakeover::class, 'assignment_id', 'assignment_id');
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>

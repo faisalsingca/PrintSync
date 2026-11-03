@@ -6,6 +6,7 @@ use App\Concerns\PasswordValidationRules;
 use App\Models\StaffInvitation;
 use App\Models\User;
 use App\Services\AuditLogService;
+use App\Services\OrderService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -26,15 +27,19 @@ class StaffInvitationController extends Controller
         ]);
     }
 
-    public function accept(Request $request, string $token, AuditLogService $auditLog): RedirectResponse
-    {
+    public function accept(
+        Request $request,
+        string $token,
+        AuditLogService $auditLog,
+        OrderService $orderService,
+    ): RedirectResponse {
         $this->findValidInvitation($token);
 
         $validated = $request->validate([
             'password' => $this->passwordRules(),
         ]);
 
-        $user = DB::transaction(function () use ($token, $validated, $auditLog): ?User {
+        $user = DB::transaction(function () use ($token, $validated, $auditLog, $orderService): ?User {
             $invitation = StaffInvitation::query()
                 ->where('token_hash', hash('sha256', $token))
                 ->lockForUpdate()
@@ -56,6 +61,11 @@ class StaffInvitationController extends Controller
             ]);
 
             $user->forceFill(['email_verified_at' => now()])->save();
+
+            if ($user->role === 'staff' && $invitation->specialties !== null) {
+                $orderService->updateStaffSpecialties($user, $invitation->specialties);
+                $orderService->autoAssignUnassignedOrders();
+            }
 
             $auditLog->record(
                 $invitation->createdBy,

@@ -27,7 +27,7 @@ function autoAssignOrder(User $customer, string $serviceLine = 'graphic_design',
     ]);
 }
 
-test('orders for the same service are shared between the two matching staff', function () {
+test('orders for the same service rotate evenly between matching staff', function () {
     $customer = User::factory()->create(['role' => 'customer']);
     $first = autoAssignStaff('graphic_designer');
     $second = autoAssignStaff('graphic_designer');
@@ -36,7 +36,7 @@ test('orders for the same service are shared between the two matching staff', fu
     $assignedTo = collect(range(1, 4))
         ->map(fn () => $service->autoAssignOrder(autoAssignOrder($customer))->staff_id);
 
-    expect($assignedTo->countBy()->all())->toBe([$first->id => 2, $second->id => 2])
+    expect($assignedTo->countBy()->values()->sort()->values()->all())->toBe([2, 2])
         ->and($assignedTo[0])->not->toBe($assignedTo[1]);
 
     expect(OrderAssignment::query()->where('assignment_status', 'accepted')->where('is_active', true)->count())->toBe(4);
@@ -78,9 +78,15 @@ test('a new customer order appears in the orders of staff with the matching spec
 
     $order = Order::query()->sole();
 
-    // Orders are shared by specialty, so no individual assignment row is needed.
     expect($order->order_type)->toBe('Graphic design / layout');
 
     expect(app(OrderService::class)->getStaffOrders($designer)->pluck('order_id')->all())
         ->toBe([$order->order_id]);
+
+    $this->assertDatabaseHas('order_assignments', [
+        'order_id' => $order->order_id,
+        'staff_id' => $designer->id,
+        'assignment_status' => OrderAssignment::STATUS_ACCEPTED,
+        'is_active' => true,
+    ]);
 });

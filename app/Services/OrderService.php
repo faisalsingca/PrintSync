@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Order;
 use App\Models\OrderAssignment;
+use App\Models\OrderTakeover;
 use App\Models\User;
 use App\OrderServiceLine;
 use App\OrderStatus;
@@ -42,7 +43,12 @@ class OrderService
      */
     public function createOrder(array $attributes): Order
     {
-        return Order::create($attributes);
+        return DB::transaction(function () use ($attributes): Order {
+            $order = Order::create($attributes);
+            $this->autoAssignOrder($order);
+
+            return $order;
+        });
     }
 
     /**
@@ -88,14 +94,7 @@ class OrderService
                 ->lockForUpdate()
                 ->findOrFail($order->order_id);
 
-            $hasAcceptedAssignment = OrderAssignment::query()
-                ->where('order_id', $lockedOrder->order_id)
-                ->where('staff_id', $staff->id)
-                ->where('assignment_status', OrderAssignment::STATUS_ACCEPTED)
-                ->where('is_active', true)
-                ->exists();
-
-            if (! $hasAcceptedAssignment && ! $this->staffCanServe($staff, $lockedOrder)) {
+            if (! $this->canUpdateOrder($staff, $lockedOrder)) {
                 throw new AuthorizationException;
             }
 
@@ -116,6 +115,13 @@ class OrderService
             $lockedOrder->status = $status->value;
             $lockedOrder->save();
 
+            if ($status === OrderStatus::Completed) {
+                OrderAssignment::query()
+                    ->where('order_id', $lockedOrder->order_id)
+                    ->where('is_active', true)
+                    ->update(['is_active' => null]);
+            }
+
             return $lockedOrder;
         });
     }
@@ -129,6 +135,7 @@ class OrderService
     {
         return Order::query()
             ->whereDoesntHave('assignments', fn ($query) => $query->where('is_active', true))
+            ->where('status', '!=', OrderStatus::Completed->value)
             ->with('customer')
             ->latest('order_date')
             ->latest('order_id')
@@ -146,6 +153,7 @@ class OrderService
 
         return User::query()
             ->where('role', 'staff')
+            ->where('is_active', true)
             ->whereHas('specialties', fn ($query) => $query->whereIn('specialty', $eligibleSpecialties))
             ->whereDoesntHave('orderAssignments', fn ($query) => $query
                 ->where('order_id', $order->order_id)
@@ -362,10 +370,15 @@ class OrderService
      */
     public function getRoutingOverview(int $limit = 50): Collection
     {
+        $this->autoAssignUnassignedOrders();
+
         return Order::query()
             ->with([
                 'customer',
-                'assignments' => fn ($query) => $query->where('is_active', true)->with('staff'),
+                'assignments' => fn ($query) => $query->with('staff')->orderByDesc('assignment_id'),
+                'takeovers' => fn ($query) => $query
+                    ->with(['coveringStaff', 'assignment.staff'])
+                    ->orderByDesc('takeover_id'),
             ])
             ->latest('order_date')
             ->latest('order_id')
@@ -378,32 +391,18 @@ class OrderService
      */
     public function countUnassignedOrders(): int
     {
-        $hasStaff = [];
-
         return Order::query()
             ->whereNotNull('service_line')
             ->where('status', '!=', OrderStatus::Completed->value)
-            ->get()
-            ->filter(function (Order $order) use (&$hasStaff): bool {
-                $line = OrderServiceLine::tryFrom((string) $order->service_line);
-
-                if ($line === null) {
-                    return false;
-                }
-
-                $hasStaff[$line->value] ??= $this->getEligibleStaff($line, $order)->isNotEmpty();
-
-                return ! $hasStaff[$line->value];
-            })
+            ->whereDoesntHave('assignments', fn ($query) => $query->where('is_active', true))
             ->count();
     }
 
     /**
-     * Automatically assign an unassigned order to the eligible staff member with the lightest workload.
+     * Automatically assign an unassigned order to the next eligible staff member in rotation.
      *
-     * Staff who share a specialty take turns: the member with the fewest unfinished
-     * assigned orders is chosen first, then the one who was assigned an order least
-     * recently. The assignment is accepted immediately (no offer step). Returns null
+     * Staff are selected alphabetically and rotate by the most recent assignment for this service line.
+     * The assignment is accepted immediately (no offer step). Returns null
      * when the order has no valid service line, already has an active assignment, or
      * no eligible staff member exists yet.
      */
@@ -413,7 +412,7 @@ class OrderService
             ? OrderServiceLine::tryFrom($order->service_line)
             : null;
 
-        if ($serviceLine === null) {
+        if ($serviceLine === null || $order->status === OrderStatus::Completed->value) {
             return null;
         }
 
@@ -426,36 +425,36 @@ class OrderService
                 return null;
             }
 
-            $candidateIds = $this->getEligibleStaff($serviceLine, $lockedOrder)->pluck('id');
+            $candidateIds = $this->getEligibleStaff($serviceLine, $lockedOrder)->modelKeys();
 
-            if ($candidateIds->isEmpty()) {
+            if ($candidateIds === []) {
                 return null;
             }
 
-            $openCounts = OrderAssignment::query()
-                ->join('orders', 'orders.order_id', '=', 'order_assignments.order_id')
-                ->where('order_assignments.is_active', true)
-                ->where('orders.status', '!=', OrderStatus::Completed->value)
-                ->whereIn('order_assignments.staff_id', $candidateIds)
-                ->groupBy('order_assignments.staff_id')
-                ->selectRaw('order_assignments.staff_id as staff_id, COUNT(*) as open_count')
-                ->pluck('open_count', 'staff_id');
+            $lockedCandidateIds = User::query()
+                ->whereKey($candidateIds)
+                ->where('is_active', true)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->pluck('id')
+                ->all();
+            $candidateIds = array_values(array_intersect($candidateIds, $lockedCandidateIds));
 
-            $lastAssigned = OrderAssignment::query()
+            if ($candidateIds === []) {
+                return null;
+            }
+
+            $lastAssignedStaffId = (int) (OrderAssignment::query()
                 ->whereIn('staff_id', $candidateIds)
-                ->groupBy('staff_id')
-                ->selectRaw('staff_id, MAX(assignment_id) as last_assignment_id')
-                ->pluck('last_assignment_id', 'staff_id');
+                ->whereHas('order', fn ($query) => $query->where('service_line', $serviceLine->value))
+                ->where('assignment_status', OrderAssignment::STATUS_ACCEPTED)
+                ->latest('assignment_id')
+                ->lockForUpdate()
+                ->value('staff_id') ?? 0);
 
-            $sortKey = fn (int $staffId): array => [
-                (int) $openCounts->get($staffId, 0),
-                (int) $lastAssigned->get($staffId, 0),
-                $staffId,
-            ];
-
-            $staffId = $candidateIds
-                ->sort(fn (int $a, int $b): int => $sortKey($a) <=> $sortKey($b))
-                ->first();
+            $lastIndex = array_search($lastAssignedStaffId, $candidateIds, true);
+            $nextIndex = $lastIndex === false ? 0 : ($lastIndex + 1) % count($candidateIds);
+            $staffId = $candidateIds[$nextIndex];
 
             return OrderAssignment::create([
                 'order_id' => $lockedOrder->order_id,
@@ -473,9 +472,15 @@ class OrderService
      */
     public function autoAssignUnassignedOrders(): int
     {
-        // Orders are no longer assigned one by one. Every staff member with a
-        // matching specialty sees them, so there is nothing to assign.
-        return 0;
+        $assignedCount = 0;
+
+        foreach ($this->getOrdersAwaitingRouting() as $order) {
+            if ($this->autoAssignOrder($order) !== null) {
+                $assignedCount++;
+            }
+        }
+
+        return $assignedCount;
     }
 
     /**
@@ -495,9 +500,22 @@ class OrderService
      */
     public function getStaffOrders(User $staff): Collection
     {
+        $this->autoAssignUnassignedOrders();
+
         return Order::query()
             ->whereIn('service_line', $this->serviceLinesFor($staff))
-            ->with('customer')
+            ->whereDoesntHave('assignments', fn ($query) => $query
+                ->where('staff_id', $staff->id)
+                ->where('assignment_status', OrderAssignment::STATUS_DECLINED))
+            ->with([
+                'customer',
+                'assignments' => fn ($query) => $query->with('staff')->orderByDesc('assignment_id'),
+                'takeovers' => fn ($query) => $query
+                    ->with(['coveringStaff', 'assignment.staff'])
+                    ->orderByDesc('takeover_id'),
+            ])
+            ->orderByDesc('order_date')
+            ->orderByDesc('order_id')
             ->get();
     }
 
@@ -526,7 +544,91 @@ class OrderService
             return false;
         }
 
-        return in_array($order->service_line, $this->serviceLinesFor($staff), true);
+        return in_array($order->service_line, $this->serviceLinesFor($staff), true)
+            && ! $order->assignments()
+                ->where('staff_id', $staff->id)
+                ->where('assignment_status', OrderAssignment::STATUS_DECLINED)
+                ->exists();
+    }
+
+    public function canTakeOverOrder(User $staff, Order $order): bool
+    {
+        if (
+            $staff->role !== 'staff'
+            || $order->status === OrderStatus::Completed->value
+            || ! $this->staffCanServe($staff, $order)
+            || $order->takeovers()->exists()
+        ) {
+            return false;
+        }
+
+        return $order->assignments()
+            ->where('assignment_status', OrderAssignment::STATUS_ACCEPTED)
+            ->where('is_active', true)
+            ->where('staff_id', '!=', $staff->id)
+            ->exists();
+    }
+
+    public function canUpdateOrder(User $staff, Order $order): bool
+    {
+        if (
+            $staff->role !== 'staff'
+            || $order->status === OrderStatus::Completed->value
+            || ! $this->staffCanServe($staff, $order)
+        ) {
+            return false;
+        }
+
+        $assignment = $order->assignments()
+            ->where('is_active', true)
+            ->first();
+
+        if ($assignment === null) {
+            return false;
+        }
+
+        if ($assignment->assignment_status !== OrderAssignment::STATUS_ACCEPTED) {
+            return false;
+        }
+
+        $takeover = $order->takeovers()->first();
+
+        return $takeover === null
+            ? $assignment->staff_id === $staff->id
+            : $takeover->covering_staff_id === $staff->id;
+    }
+
+    public function takeOverOrder(Order $order, User $staff, string $reason): OrderTakeover
+    {
+        if (trim($reason) === '' || mb_strlen($reason) > 500) {
+            throw ValidationException::withMessages([
+                'takeoverReason' => 'Explain why you are taking over this order.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($order, $staff, $reason): OrderTakeover {
+            $lockedOrder = Order::query()
+                ->lockForUpdate()
+                ->findOrFail($order->order_id);
+
+            if (! $this->canTakeOverOrder($staff, $lockedOrder)) {
+                throw new AuthorizationException;
+            }
+
+            $assignment = OrderAssignment::query()
+                ->where('order_id', $lockedOrder->order_id)
+                ->where('assignment_status', OrderAssignment::STATUS_ACCEPTED)
+                ->where('is_active', true)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            return OrderTakeover::create([
+                'order_id' => $lockedOrder->order_id,
+                'assignment_id' => $assignment->assignment_id,
+                'covering_staff_id' => $staff->id,
+                'reason' => trim($reason),
+            ]);
+        });
     }
 
     /**

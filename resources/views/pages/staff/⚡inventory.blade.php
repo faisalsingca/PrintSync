@@ -1,22 +1,24 @@
 <?php
 
 use App\Models\Inventory;
+use App\Models\InventoryAdjustmentRequest;
 use App\Services\InventoryService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
-new #[Title('Report Low Stock')] class extends Component
+new #[Title('Report Material Use')] class extends Component
 {
     public Collection $inventory;
 
-    /** @var array<int, int> Inventory ids this staff member already reported and the cashier has not handled yet. */
-    public array $reportedIds = [];
+    public Collection $adjustmentRequests;
 
     public string $search = '';
 
-    public array $alertRemarks = [];
+    public array $adjustmentQuantities = [];
+
+    public array $adjustmentRemarks = [];
 
     public string $successMessage = '';
 
@@ -33,32 +35,33 @@ new #[Title('Report Low Stock')] class extends Component
     }
 
     /**
-     * Tell the cashier a material is running low. The cashier handles the restock.
+     * Submit a material-use report for manager review.
      */
-    public function reportLowStock(int $inventoryId, InventoryService $inventoryService): void
+    public function reportMaterialUse(int $inventoryId, InventoryService $inventoryService): void
     {
-        Gate::authorize('createLowStockAlert', Inventory::class);
+        $this->successMessage = '';
+        $item = Inventory::query()->findOrFail($inventoryId);
+        Gate::authorize('createAdjustmentRequest', $item);
 
         $this->validate([
-            "alertRemarks.$inventoryId" => ['nullable', 'string', 'max:500'],
+            "adjustmentQuantities.$inventoryId" => ['required', 'numeric', 'gt:0', 'max:999999999', 'decimal:0,3'],
+            "adjustmentRemarks.$inventoryId" => ['nullable', 'string', 'max:500'],
+        ], [], [
+            "adjustmentQuantities.$inventoryId" => 'quantity used',
+            "adjustmentRemarks.$inventoryId" => 'remarks',
         ]);
 
-        $item = Inventory::query()->findOrFail($inventoryId);
-        $staff = auth()->user();
+        $remarks = trim((string) ($this->adjustmentRemarks[$inventoryId] ?? ''));
 
-        if ($inventoryService->hasOpenAlertFrom($item, $staff)) {
-            $this->successMessage = "You already reported {$item->material_name}. The cashier has it and will restock it.";
-            $this->reload();
+        $inventoryService->createAdjustmentRequest(
+            $item,
+            auth()->user(),
+            (string) $this->adjustmentQuantities[$inventoryId],
+            $remarks === '' ? null : $remarks,
+        );
 
-            return;
-        }
-
-        $remarks = trim((string) ($this->alertRemarks[$inventoryId] ?? ''));
-
-        $inventoryService->createLowStockAlert($item, $staff, $remarks === '' ? null : $remarks);
-
-        $this->successMessage = "The cashier was told that {$item->material_name} is low.";
-        unset($this->alertRemarks[$inventoryId]);
+        $this->successMessage = "Your use of {$item->material_name} was reported for review.";
+        unset($this->adjustmentQuantities[$inventoryId], $this->adjustmentRemarks[$inventoryId]);
         $this->reload();
     }
 
@@ -67,17 +70,14 @@ new #[Title('Report Low Stock')] class extends Component
         $service = app(InventoryService::class);
         $search = mb_strtolower(trim($this->search));
 
+        $staff = auth()->user();
         $this->inventory = $service
-            ->getInventoryList()
+            ->getStaffInventoryList($staff)
             ->when($search !== '', fn ($items) => $items
                 ->filter(fn (Inventory $item): bool => str_contains(mb_strtolower($item->material_name), $search))
                 ->values());
 
-        $this->reportedIds = $service
-            ->getOpenLowStockAlerts()
-            ->where('staff_id', auth()->id())
-            ->pluck('inventory_id')
-            ->all();
+        $this->adjustmentRequests = $service->getOpenAdjustmentRequests($staff);
     }
 };
 ?>
@@ -88,9 +88,9 @@ new #[Title('Report Low Stock')] class extends Component
 
 <div class="staff-inventory-page grid gap-8">
     <header class="grid gap-1">
-        <h1 class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">Report Low Stock</h1>
+        <h1 class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">Report Material Use</h1>
         <p class="text-sm leading-6 text-[var(--ps-muted)]">
-            Running out of a material? Press <strong>Report low stock</strong> and the cashier will be told. The cashier handles all restocking.
+            Report the quantity you used and add a remark if needed. An owner or cashier will review the report and update the stock.
         </p>
     </header>
 
@@ -105,6 +105,11 @@ new #[Title('Report Low Stock')] class extends Component
             {{ $successMessage }}
         </div>
     @endif
+    @error('quantity')
+        <div role="alert" class="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-medium text-[var(--ps-text)]">
+            {{ $message }}
+        </div>
+    @enderror
 
     <section class="ps-glass overflow-hidden" aria-labelledby="inventory-list-heading">
         <header class="flex flex-col gap-3 border-b border-[var(--ps-border)] px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
@@ -116,7 +121,10 @@ new #[Title('Report Low Stock')] class extends Component
             @forelse ($inventory as $item)
                 @php
                     $state = $item->stockStatus();
-                    $alreadyReported = in_array($item->inventory_id, $reportedIds, true);
+                    $quantityError = 'adjustmentQuantities.'.$item->inventory_id;
+                    $alreadyReported = $adjustmentRequests->contains(
+                        fn (InventoryAdjustmentRequest $request): bool => $request->inventory_id === $item->inventory_id,
+                    );
                 @endphp
                 <li wire:key="inventory-item-{{ $item->inventory_id }}" class="grid gap-4 px-5 py-4 sm:px-6">
                     <div class="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-6">
@@ -143,13 +151,16 @@ new #[Title('Report Low Stock')] class extends Component
 
                     <div class="grid gap-1 border-t border-[var(--ps-border)] pt-4">
                         @if ($alreadyReported)
-                            <p class="text-sm font-medium text-amber-500">Reported. Waiting for the cashier to restock.</p>
+                            <p class="text-sm font-medium text-amber-500">Reported. Waiting for review.</p>
+                            @error($quantityError) <p class="text-sm text-red-500">{{ $message }}</p> @enderror
                         @else
-                            <div class="flex flex-col gap-2 sm:flex-row">
-                                <input type="text" wire:model="alertRemarks.{{ $item->inventory_id }}" class="ps-input" maxlength="500" placeholder="Remarks (optional)" aria-label="Low-stock remarks for {{ $item->material_name }}">
-                                <button type="button" wire:click="reportLowStock({{ $item->inventory_id }})" wire:loading.attr="disabled" class="ps-button-secondary shrink-0">Report low stock</button>
+                            <div class="grid gap-2 sm:grid-cols-[minmax(8rem,0.35fr)_minmax(0,1fr)_auto]">
+                                <input type="number" min="0.001" step="0.001" wire:model="adjustmentQuantities.{{ $item->inventory_id }}" class="ps-input" placeholder="Quantity used" aria-label="Quantity of {{ $item->material_name }} used">
+                                <input type="text" wire:model="adjustmentRemarks.{{ $item->inventory_id }}" class="ps-input" maxlength="500" placeholder="Remarks (optional)" aria-label="Usage remarks for {{ $item->material_name }}">
+                                <button type="button" wire:click="reportMaterialUse({{ $item->inventory_id }})" wire:loading.attr="disabled" class="ps-button-secondary shrink-0">Report use</button>
                             </div>
-                            @error("alertRemarks.{$item->inventory_id}") <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+                            @error($quantityError) <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+                            @error("adjustmentRemarks.{$item->inventory_id}") <p class="text-sm text-red-500">{{ $message }}</p> @enderror
                         @endif
                     </div>
                 </li>
@@ -157,6 +168,31 @@ new #[Title('Report Low Stock')] class extends Component
                 <li class="px-5 py-8 text-sm text-[var(--ps-muted)]">
                     {{ $search !== '' ? 'No materials match your search.' : 'No inventory items.' }}
                 </li>
+            @endforelse
+        </ul>
+    </section>
+
+    <section class="ps-glass overflow-hidden" aria-labelledby="usage-reports-heading">
+        <header class="grid gap-1 border-b border-[var(--ps-border)] px-5 py-5 sm:px-6">
+            <h2 id="usage-reports-heading" class="text-lg font-semibold text-[var(--ps-text)]">Usage Reports</h2>
+            <p class="text-sm text-[var(--ps-muted)]">Completed reports are removed from this active list.</p>
+        </header>
+        <ul class="divide-y divide-[var(--ps-border)]">
+            @forelse ($adjustmentRequests as $request)
+                <li wire:key="staff-usage-report-{{ $request->request_id }}" class="grid gap-2 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6">
+                    <div class="grid gap-1">
+                        <h3 class="font-medium text-[var(--ps-text)]">{{ $request->inventory->material_name }} · {{ $fmt($request->quantity) }} {{ $request->inventory->unit }}</h3>
+                        @if ($request->remarks)
+                            <p class="text-sm text-[var(--ps-muted)]">{{ $request->remarks }}</p>
+                        @endif
+                    </div>
+                    <x-status-badge
+                        :tone="$request->status === InventoryAdjustmentRequest::STATUS_IN_PROGRESS ? 'progress' : 'warning'"
+                        :label="$request->status === InventoryAdjustmentRequest::STATUS_IN_PROGRESS ? 'In Progress' : 'Pending Review'"
+                    />
+                </li>
+            @empty
+                <li class="px-5 py-8 text-sm text-[var(--ps-muted)]">No usage reports are waiting for review.</li>
             @endforelse
         </ul>
     </section>

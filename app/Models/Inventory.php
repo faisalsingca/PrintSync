@@ -114,6 +114,22 @@ class Inventory extends Model
     }
 
     /**
+     * Get the staff specialties that can use this material.
+     */
+    public function specialties(): HasMany
+    {
+        return $this->hasMany(InventorySpecialty::class, 'inventory_id', 'inventory_id');
+    }
+
+    /**
+     * Get the staff usage reports for this material.
+     */
+    public function adjustmentRequests(): HasMany
+    {
+        return $this->hasMany(InventoryAdjustmentRequest::class, 'inventory_id', 'inventory_id');
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>

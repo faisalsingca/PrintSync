@@ -9,12 +9,11 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
-use Laravel\Fortify\Contracts\PasskeyUser;
-use Laravel\Fortify\PasskeyAuthenticatable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
 /**
@@ -35,10 +34,10 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  */
 #[Fillable(['name', 'email', 'phone', 'password', 'role'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
-class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
+class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, MustVerifyEmailTrait, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
+    use HasFactory, MustVerifyEmailTrait, Notifiable, TwoFactorAuthenticatable;
 
     protected $attributes = [
         'is_active' => true,
@@ -101,6 +100,16 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     }
 
     /**
+     * Get the pending email change request for this user.
+     *
+     * @return HasOne<EmailChangeRequest, $this>
+     */
+    public function emailChangeRequest(): HasOne
+    {
+        return $this->hasOne(EmailChangeRequest::class);
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
@@ -115,14 +124,14 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     }
 
     /**
-     * Specialties that never need to report low stock (they only use a PC).
+     * Specialties that do not report material use.
      */
     private const NO_STOCK_SPECIALTIES = ['graphic_designer'];
 
     /**
-     * Whether this staff member can see the inventory page and report low stock.
+     * Whether this staff member can report material use.
      */
-    public function canReportLowStock(): bool
+    public function canReportMaterialUse(): bool
     {
         if ($this->role !== 'staff') {
             return false;
@@ -132,6 +141,11 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
 
         return $specialties->isEmpty()
             || $specialties->contains(fn (string $specialty): bool => ! in_array($specialty, self::NO_STOCK_SPECIALTIES, true));
+    }
+
+    public function canReportLowStock(): bool
+    {
+        return $this->canReportMaterialUse();
     }
 
     /**

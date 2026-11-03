@@ -40,6 +40,7 @@ new #[Title('Archived Materials')] class extends Component
 ?>
 
 @php
+    $inventoryRoutePrefix = auth()->user()->role === 'owner' ? 'owner' : 'cashier';
     $fmt = fn ($number) => rtrim(rtrim(number_format((float) $number, 3, '.', ''), '0'), '.');
 @endphp
 
@@ -49,7 +50,7 @@ new #[Title('Archived Materials')] class extends Component
             <h1 class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">Archived Materials</h1>
             <p class="text-sm leading-6 text-[var(--ps-muted)]">Archived materials keep their history. Restore one to use it again.</p>
         </div>
-        <a href="{{ route('cashier.inventory') }}" wire:navigate class="ps-button-ghost w-fit">Back to inventory</a>
+        <a href="{{ route($inventoryRoutePrefix.'.inventory') }}" wire:navigate class="ps-button-ghost w-fit">Back to inventory</a>
     </header>
 
     @if ($successMessage !== '')

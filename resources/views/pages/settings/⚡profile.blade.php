@@ -1,7 +1,7 @@
 <?php
 
 use App\Concerns\ProfileValidationRules;
-use App\Notifications\EmailAddressChanged;
+use App\Services\EmailChangeService;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
@@ -23,34 +23,58 @@ new #[Title('Profile settings')] class extends Component {
     public function mount(): void
     {
         $this->name = Auth::user()->name;
-        $this->email = Auth::user()->email;
+        $this->email = Auth::user()->emailChangeRequest?->new_email ?? Auth::user()->email;
         $this->phone = Auth::user()->phone ?? '';
     }
 
     /**
      * Update the profile information for the currently authenticated user.
      */
-    public function updateProfileInformation(): void
+    public function updateProfileInformation(EmailChangeService $emailChanges): void
     {
         $user = Auth::user();
 
         $validated = $this->validate($this->profileRules($user->id));
-
-        $user->fill($validated);
-        $emailChanged = $user->isDirty('email');
+        $emailChanged = $validated['email'] !== $user->email;
 
         if ($emailChanged) {
-            $user->email_verified_at = null;
+            $emailChanges->assertEmailIsAvailable($user, $validated['email']);
         }
 
-        $user->save();
+        $user->fill([
+            'name' => $validated['name'],
+            'phone' => $validated['phone'],
+        ])->save();
 
         if ($emailChanged) {
-            $user->sendEmailVerificationNotification();
-            $user->notify(new EmailAddressChanged);
+            $requested = $emailChanges->requestChange($user, $validated['email']);
+            $user->unsetRelation('emailChangeRequest');
+
+            Session::flash('status', $requested
+                ? __('Confirmation links were sent. Your current email stays in use until the change is confirmed.')
+                : __('This email change is already pending. Check the confirmation emails we sent.'));
+        } elseif ($user->emailChangeRequest()->exists()) {
+            $emailChanges->cancelPending($user);
+            $user->unsetRelation('emailChangeRequest');
+            $this->email = $user->email;
+
+            Session::flash('status', __('The pending email change was cancelled.'));
         }
 
         Flux::toast(variant: 'success', text: __('Profile updated.'));
+    }
+
+    /**
+     * Cancel the pending email change.
+     */
+    public function cancelEmailChange(EmailChangeService $emailChanges): void
+    {
+        $user = Auth::user();
+        $emailChanges->cancelPending($user);
+        $user->unsetRelation('emailChangeRequest');
+        $this->email = $user->email;
+
+        Session::flash('status', __('The pending email change was cancelled.'));
     }
 
     /**
@@ -86,18 +110,46 @@ new #[Title('Profile settings')] class extends Component {
 }; ?>
 
 <section class="w-full">
+    @php($pendingEmailChange = Auth::user()->emailChangeRequest()->first())
+
     @include('partials.settings-heading')
 
     <flux:heading level="2" class="sr-only">{{ __('Profile settings') }}</flux:heading>
 
     <x-pages::settings.layout :heading="__('Profile')" :subheading="__('Update your name and email address')">
+        <x-auth-session-status class="text-center" :status="session('status')" />
+
         <form wire:submit="updateProfileInformation" class="my-6 w-full space-y-6">
             <flux:input wire:model="name" :label="__('Name')" type="text" required autofocus autocomplete="name" />
 
             <div>
+                <flux:text class="mb-2">
+                    {{ __('Current email address: :email', ['email' => Auth::user()->email]) }}
+                </flux:text>
+
                 <flux:input wire:model="email" :label="__('Email')" type="email" required autocomplete="email" />
 
-                @if ($this->hasUnverifiedEmail)
+                @if ($pendingEmailChange)
+                    <div class="mt-4 space-y-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                        <p>
+                            {{ __('A change to :email is pending. The current address will remain on your account until the required confirmations are complete.', ['email' => $pendingEmailChange->new_email]) }}
+                        </p>
+
+                        <p>{{ __('Confirmation links expire in one hour. If they expire, cancel this request and submit it again.') }}</p>
+
+                        @if ($pendingEmailChange->old_token_hash)
+                            <p>{{ __('Approve the change from your current verified email and verify the new address using the links we sent.') }}</p>
+                        @else
+                            <p>{{ __('Verify the new address using the link we sent. Your current address was not previously verified, so it does not need to approve the change.') }}</p>
+                        @endif
+
+                        <flux:button type="button" variant="ghost" size="sm" wire:click="cancelEmailChange">
+                            {{ __('Cancel email change') }}
+                        </flux:button>
+                    </div>
+                @endif
+
+                @if ($this->hasUnverifiedEmail && ! $pendingEmailChange)
                     <div>
                         <flux:text class="mt-4">
                             {{ __('Your email address is unverified.') }}

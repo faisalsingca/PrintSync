@@ -11,8 +11,6 @@
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
-        @fonts
-        @vite(['resources/css/app.css', 'resources/js/app.js'])
         @fluxAppearance
 
         <script>
@@ -20,6 +18,9 @@
                 window.Flux.applyAppearance('dark');
             }
         </script>
+
+        @fonts
+        @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
     <body class="min-h-screen bg-[var(--ps-background)] text-[var(--ps-text)] antialiased">
         <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-[var(--ps-surface)] focus:px-4 focus:py-3">

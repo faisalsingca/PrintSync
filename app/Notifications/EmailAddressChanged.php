@@ -10,6 +10,11 @@ class EmailAddressChanged extends Notification
 {
     use Queueable;
 
+    public function __construct(
+        public readonly string $userName,
+        public readonly string $newEmail,
+    ) {}
+
     /**
      * Get the notification's delivery channels.
      *
@@ -27,9 +32,9 @@ class EmailAddressChanged extends Notification
     {
         return (new MailMessage)
             ->subject('Security alert: your email address was changed')
-            ->greeting("Hello {$notifiable->name},")
+            ->greeting("Hello {$this->userName},")
             ->line('The email address associated with your PrintSync account was changed.')
-            ->line("Your new email address is {$notifiable->email}.")
+            ->line("Your new email address is {$this->newEmail}.")
             ->line('If you did not make this change, contact your administrator immediately.');
     }
 }

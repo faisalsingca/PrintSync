@@ -9,9 +9,6 @@
 <link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
 
-@fonts
-
-@vite(['resources/css/app.css', 'resources/js/app.js'])
 @fluxAppearance
 
 <script>
@@ -19,3 +16,7 @@
         window.Flux.applyAppearance('dark');
     }
 </script>
+
+@fonts
+
+@vite(['resources/css/app.css', 'resources/js/app.js'])

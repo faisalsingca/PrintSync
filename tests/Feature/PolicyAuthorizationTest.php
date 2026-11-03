@@ -3,7 +3,7 @@
 use App\Models\Inventory;
 use App\Models\Order;
 use App\Models\OrderAssignment;
-use App\Models\Payment;
+use App\Models\StaffSpecialty;
 use App\Models\User;
 use Illuminate\Support\Facades\Gate;
 
@@ -13,6 +13,7 @@ function createPolicyTestOrder(User $customer): Order
         'customer_id' => $customer->id,
         'order_date' => now(),
         'order_type' => 'poster',
+        'service_line' => 'graphic_design',
         'quantity' => 1,
     ]);
 }
@@ -41,22 +42,36 @@ test('customers can view only their own orders', function (bool $isOwner) {
     'another customer order' => [false],
 ]);
 
-test('only assigned staff can view the order', function (bool $isAssigned) {
+test('eligible staff can view service-line orders but only the assignee can update them', function () {
     $customer = User::factory()->create(['role' => 'customer']);
-    $staff = User::factory()->create(['role' => 'staff']);
+    $assignedStaff = User::factory()->create(['role' => 'staff']);
+    $eligibleStaff = User::factory()->create(['role' => 'staff']);
+    $unrelatedStaff = User::factory()->create(['role' => 'staff']);
     $order = createPolicyTestOrder($customer);
-    $assignedStaff = $isAssigned ? $staff : User::factory()->create(['role' => 'staff']);
+    StaffSpecialty::create([
+        'staff_id' => $assignedStaff->id,
+        'specialty' => 'graphic_designer',
+    ]);
+    StaffSpecialty::create([
+        'staff_id' => $eligibleStaff->id,
+        'specialty' => 'graphic_designer',
+    ]);
+    StaffSpecialty::create([
+        'staff_id' => $unrelatedStaff->id,
+        'specialty' => 'book_binder',
+    ]);
 
     OrderAssignment::create([
         'order_id' => $order->order_id,
         'staff_id' => $assignedStaff->id,
     ]);
 
-    expect(Gate::forUser($staff)->allows('view', $order))->toBe($isAssigned);
-})->with([
-    'assigned staff member' => [true],
-    'another staff member' => [false],
-]);
+    expect(Gate::forUser($assignedStaff)->allows('view', $order))->toBeTrue()
+        ->and(Gate::forUser($eligibleStaff)->allows('view', $order))->toBeTrue()
+        ->and(Gate::forUser($unrelatedStaff)->allows('view', $order))->toBeFalse()
+        ->and(Gate::forUser($assignedStaff)->allows('updateProductionStatus', $order))->toBeTrue()
+        ->and(Gate::forUser($eligibleStaff)->allows('updateProductionStatus', $order))->toBeFalse();
+});
 
 test('only owners can route orders and manage staff specialties', function (string $role, bool $allowed) {
     $user = User::factory()->create(['role' => $role]);
@@ -77,6 +92,10 @@ test('only the assignee can respond to an active offered task', function (string
     $user = User::factory()->create(['role' => $role]);
     $staff = $isAssignee ? $user : User::factory()->create(['role' => 'staff']);
     $order = createPolicyTestOrder($customer);
+    StaffSpecialty::create([
+        'staff_id' => $staff->id,
+        'specialty' => 'graphic_designer',
+    ]);
     $assignment = OrderAssignment::create([
         'order_id' => $order->order_id,
         'staff_id' => $staff->id,
@@ -120,7 +139,7 @@ test('customers cannot view inventory', function () {
     expect(Gate::forUser($user)->allows('viewAny', Inventory::class))->toBeFalse();
 });
 
-test('only the cashier can manage inventory and add stock', function (string $role, bool $allowed) {
+test('only owners and cashiers can manage inventory and add stock', function (string $role, bool $allowed) {
     $user = User::factory()->create(['role' => $role]);
 
     expect(Gate::forUser($user)->allows('manage', Inventory::class))->toBe($allowed)
@@ -128,7 +147,7 @@ test('only the cashier can manage inventory and add stock', function (string $ro
 })->with([
     'cashier' => ['cashier', true],
     'staff' => ['staff', false],
-    'owner' => ['owner', false],
+    'owner' => ['owner', true],
     'customer' => ['customer', false],
 ]);
 

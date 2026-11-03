@@ -52,7 +52,7 @@
                 viewable
             />
 
-            <x-password-checklist for="password" confirm="password_confirmation" />
+            <x-password-checklist for="password" />
 
             <!-- Confirm Password -->
             <flux:input

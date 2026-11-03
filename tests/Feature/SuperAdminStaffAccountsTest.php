@@ -76,6 +76,7 @@ test('super admin sees a saved invitation when its email could not be sent', fun
         ->set('name', 'Jamie Printer')
         ->set('email', 'jamie@example.com')
         ->set('role', 'staff')
+        ->set('specialties', ['sewer'])
         ->call('createStaffAccount')
         ->assertSet('statusMessageIsError', true)
         ->assertSee('Email not sent');

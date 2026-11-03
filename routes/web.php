@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Auth\EmailChangeController;
 use App\Http\Controllers\Auth\LoginOtpController;
 use App\Http\Controllers\StaffInvitationController;
 use App\Models\Order;
@@ -120,6 +121,12 @@ Route::middleware(['auth', 'active'])->group(function () {
 
         Route::livewire('cashier/low-stock-reports', 'pages::cashier.low-stock-reports')
             ->name('cashier.low-stock-reports');
+
+        Route::livewire('cashier/orders/{order}', 'pages::staff.order-details')
+            ->name('cashier.orders.show');
+
+        Route::livewire('cashier/routing', 'pages::owner.routing')
+            ->name('cashier.routing');
     });
 
     Route::middleware('role:owner')->group(function () {
@@ -141,8 +148,14 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::livewire('owner/specialties', 'pages::owner.specialties')
             ->name('owner.specialties');
 
-        Route::livewire('owner/inventory', 'pages::owner.inventory')
+        Route::livewire('owner/inventory', 'pages::cashier.inventory')
             ->name('owner.inventory');
+
+        Route::livewire('owner/inventory/create', 'pages::cashier.inventory-add')
+            ->name('owner.inventory.create');
+
+        Route::livewire('owner/inventory/archive', 'pages::cashier.inventory-archive')
+            ->name('owner.inventory.archive');
 
         Route::livewire('owner/low-stock', 'pages::owner.low-stock')
             ->name('owner.low-stock');
@@ -172,6 +185,21 @@ Route::middleware(['guest', 'throttle:20,1'])->group(function () {
     Route::get('login/verify', [LoginOtpController::class, 'show'])->name('otp.show');
     Route::post('login/verify', [LoginOtpController::class, 'verify'])->name('otp.verify');
     Route::post('login/verify/resend', [LoginOtpController::class, 'resend'])->name('otp.resend');
+});
+
+Route::middleware('throttle:10,1')->group(function () {
+    Route::get('email-change/{emailChangeRequest}/approve/{token}', [EmailChangeController::class, 'showApproval'])
+        ->where('token', '[A-Za-z0-9]{64}')
+        ->name('email-change.approve.show');
+    Route::post('email-change/{emailChangeRequest}/approve/{token}', [EmailChangeController::class, 'approve'])
+        ->where('token', '[A-Za-z0-9]{64}')
+        ->name('email-change.approve');
+    Route::get('email-change/{emailChangeRequest}/verify/{token}', [EmailChangeController::class, 'showVerification'])
+        ->where('token', '[A-Za-z0-9]{64}')
+        ->name('email-change.verify.show');
+    Route::post('email-change/{emailChangeRequest}/verify/{token}', [EmailChangeController::class, 'verify'])
+        ->where('token', '[A-Za-z0-9]{64}')
+        ->name('email-change.verify');
 });
 
 Route::middleware('throttle:10,1')->group(function () {

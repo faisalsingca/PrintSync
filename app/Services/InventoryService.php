@@ -3,9 +3,11 @@
 namespace App\Services;
 
 use App\Models\Inventory;
+use App\Models\InventoryAdjustmentRequest;
 use App\Models\InventoryAlert;
 use App\Models\StockIn;
 use App\Models\User;
+use App\StaffSpecialtyType;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -17,7 +19,7 @@ class InventoryService
     /**
      * Create a new inventory material. Its status is worked out from the quantity.
      *
-     * @param  array{material_name: string, quantity: string, unit: string, low_stock_level?: string}  $attributes
+     * @param  array{material_name: string, quantity: string, unit: string, low_stock_level?: string, specialties?: list<string>}  $attributes
      */
     public function createMaterial(array $attributes, ?User $actor = null): Inventory
     {
@@ -31,6 +33,9 @@ class InventoryService
 
             $inventory->status = $inventory->stockStatus();
             $inventory->save();
+            $specialties = $attributes['specialties'] ?? ['all'];
+            $this->validateSpecialties($specialties);
+            $this->replaceSpecialties($inventory, $specialties);
 
             $this->audit()->record(
                 $actor,
@@ -110,12 +115,52 @@ class InventoryService
     }
 
     /**
+     * Replace the specialties allowed to report use of a material.
+     *
+     * @param  list<string>  $specialties
+     */
+    public function updateMaterialSpecialties(Inventory $inventory, array $specialties, ?User $actor = null): void
+    {
+        DB::transaction(function () use ($inventory, $specialties, $actor): void {
+            $this->ensureActive($inventory);
+            $this->validateSpecialties($specialties);
+
+            $before = $inventory->specialties()->orderBy('specialty')->pluck('specialty')->all();
+            $this->replaceSpecialties($inventory, $specialties);
+            $after = $inventory->specialties()->orderBy('specialty')->pluck('specialty')->all();
+
+            if ($before !== $after) {
+                $this->audit()->record(
+                    $actor,
+                    'inventory.specialties_updated',
+                    "Updated which staff specialties can use \"{$inventory->material_name}\".",
+                    'inventory',
+                    $inventory->inventory_id,
+                    $inventory->material_name,
+                    ['from' => $before, 'to' => $after],
+                );
+            }
+        });
+    }
+
+    /**
      * Archive a material instead of deleting it. History is kept and it can be restored.
      */
     public function archiveMaterial(Inventory $inventory, ?User $actor = null): Inventory
     {
         return DB::transaction(function () use ($inventory, $actor): Inventory {
             $this->ensureActive($inventory);
+
+            if ($inventory->adjustmentRequests()
+                ->whereIn('status', [
+                    InventoryAdjustmentRequest::STATUS_PENDING,
+                    InventoryAdjustmentRequest::STATUS_IN_PROGRESS,
+                ])
+                ->exists()) {
+                throw ValidationException::withMessages([
+                    'inventory' => 'Resolve open usage reports before archiving this material.',
+                ]);
+            }
 
             $inventory->forceFill(['archived_at' => now()])->save();
 
@@ -197,8 +242,7 @@ class InventoryService
     }
 
     /**
-     * Deduct stock that was used (done by the cashier). Records a low-stock alert automatically when the
-     * material drops into Low Stock or Out of Stock.
+     * Deduct stock and record an automatic low-stock alert when the actual stock crosses its threshold.
      *
      * @throws ValidationException when more than the remaining quantity is deducted
      */
@@ -257,7 +301,207 @@ class InventoryService
     }
 
     /**
-     * Record a low-stock report (staff pressing "Report low stock"). The cashier handles it.
+     * Record material use without changing stock. An owner or cashier reviews and completes the request.
+     */
+    public function createAdjustmentRequest(
+        Inventory $inventory,
+        User $staff,
+        string $quantity,
+        ?string $remarks = null,
+    ): InventoryAdjustmentRequest {
+        return DB::transaction(function () use ($inventory, $staff, $quantity, $remarks): InventoryAdjustmentRequest {
+            $lockedInventory = Inventory::query()
+                ->lockForUpdate()
+                ->findOrFail($inventory->inventory_id);
+
+            $this->ensureActive($lockedInventory);
+
+            if (! is_numeric($quantity) || (float) $quantity <= 0) {
+                throw ValidationException::withMessages([
+                    'quantity' => 'Enter a quantity greater than zero.',
+                ]);
+            }
+
+            $hasOpenRequest = $lockedInventory->adjustmentRequests()
+                ->where('staff_id', $staff->id)
+                ->whereIn('status', [
+                    InventoryAdjustmentRequest::STATUS_PENDING,
+                    InventoryAdjustmentRequest::STATUS_IN_PROGRESS,
+                ])
+                ->exists();
+
+            if ($hasOpenRequest) {
+                throw ValidationException::withMessages([
+                    'quantity' => 'You already have an open usage report for this material.',
+                ]);
+            }
+
+            $request = InventoryAdjustmentRequest::create([
+                'inventory_id' => $lockedInventory->inventory_id,
+                'staff_id' => $staff->id,
+                'quantity' => $quantity,
+                'remarks' => $remarks,
+                'status' => InventoryAdjustmentRequest::STATUS_PENDING,
+            ]);
+
+            $this->audit()->record(
+                $staff,
+                'inventory.adjustment_requested',
+                "Reported use of {$this->plain($quantity)} {$lockedInventory->unit} of \"{$lockedInventory->material_name}\".",
+                InventoryAdjustmentRequest::class,
+                $request->request_id,
+                $lockedInventory->material_name,
+                array_filter([
+                    'quantity' => $this->plain($quantity),
+                    'remarks' => $remarks,
+                ]),
+            );
+
+            return $request;
+        });
+    }
+
+    /**
+     * Mark an open usage report as being reviewed.
+     */
+    public function startAdjustmentRequest(InventoryAdjustmentRequest $request, User $actor): InventoryAdjustmentRequest
+    {
+        return DB::transaction(function () use ($request, $actor): InventoryAdjustmentRequest {
+            $lockedRequest = InventoryAdjustmentRequest::query()
+                ->lockForUpdate()
+                ->findOrFail($request->request_id);
+
+            if ($lockedRequest->status !== InventoryAdjustmentRequest::STATUS_PENDING) {
+                throw ValidationException::withMessages([
+                    'adjustment' => 'Only pending usage reports can be started.',
+                ]);
+            }
+
+            $lockedRequest->forceFill([
+                'status' => InventoryAdjustmentRequest::STATUS_IN_PROGRESS,
+                'started_by' => $actor->id,
+                'started_at' => now(),
+            ])->save();
+
+            $this->audit()->record(
+                $actor,
+                'inventory.adjustment_started',
+                "Started reviewing usage report #{$lockedRequest->request_id}.",
+                InventoryAdjustmentRequest::class,
+                $lockedRequest->request_id,
+                "Usage report #{$lockedRequest->request_id}",
+            );
+
+            return $lockedRequest;
+        });
+    }
+
+    /**
+     * Deduct the reported quantity and close the usage report.
+     *
+     * @throws ValidationException when the reported quantity exceeds available stock
+     */
+    public function completeAdjustmentRequest(
+        InventoryAdjustmentRequest $request,
+        User $actor,
+    ): InventoryAdjustmentRequest {
+        return DB::transaction(function () use ($request, $actor): InventoryAdjustmentRequest {
+            $lockedRequest = InventoryAdjustmentRequest::query()
+                ->lockForUpdate()
+                ->findOrFail($request->request_id);
+
+            if ($lockedRequest->status !== InventoryAdjustmentRequest::STATUS_IN_PROGRESS) {
+                throw ValidationException::withMessages([
+                    'adjustment' => 'Start the usage report before completing it.',
+                ]);
+            }
+
+            $inventory = Inventory::query()->findOrFail($lockedRequest->inventory_id);
+
+            $this->deductStock(
+                $inventory,
+                $actor,
+                $lockedRequest->quantity,
+                $lockedRequest->remarks,
+            );
+
+            $lockedRequest->forceFill([
+                'status' => InventoryAdjustmentRequest::STATUS_COMPLETED,
+                'completed_by' => $actor->id,
+                'completed_at' => now(),
+            ])->save();
+
+            $this->audit()->record(
+                $actor,
+                'inventory.adjustment_completed',
+                "Completed usage report #{$lockedRequest->request_id}.",
+                InventoryAdjustmentRequest::class,
+                $lockedRequest->request_id,
+                "Usage report #{$lockedRequest->request_id}",
+            );
+
+            return $lockedRequest;
+        });
+    }
+
+    /**
+     * Active (not archived) materials ordered by name.
+     *
+     * @return Collection<int, Inventory>
+     */
+    public function getInventoryList(): Collection
+    {
+        return Inventory::query()
+            ->active()
+            ->with('specialties')
+            ->orderBy('material_name')
+            ->get();
+    }
+
+    /**
+     * Materials used by the staff member's assigned specialties.
+     *
+     * @return Collection<int, Inventory>
+     */
+    public function getStaffInventoryList(User $staff): Collection
+    {
+        $specialties = $staff->specialties()->pluck('specialty')->all();
+
+        return Inventory::query()
+            ->active()
+            ->whereHas('specialties', function (Builder $query) use ($specialties): void {
+                $query->where('specialty', 'all');
+
+                if ($specialties !== []) {
+                    $query->orWhereIn('specialty', $specialties);
+                }
+            })
+            ->with('specialties')
+            ->orderBy('material_name')
+            ->get();
+    }
+
+    /**
+     * Open adjustment requests for staff, or all staff when viewed by a manager.
+     *
+     * @return Collection<int, InventoryAdjustmentRequest>
+     */
+    public function getOpenAdjustmentRequests(User $viewer): Collection
+    {
+        return InventoryAdjustmentRequest::query()
+            ->whereIn('status', [
+                InventoryAdjustmentRequest::STATUS_PENDING,
+                InventoryAdjustmentRequest::STATUS_IN_PROGRESS,
+            ])
+            ->when($viewer->role === 'staff', fn (Builder $query) => $query->where('staff_id', $viewer->id))
+            ->with(['inventory', 'staff', 'startedBy'])
+            ->latest('created_at')
+            ->latest('request_id')
+            ->get();
+    }
+
+    /**
+     * Record a low-stock alert for internal callers.
      */
     public function createLowStockAlert(
         Inventory $inventory,
@@ -266,7 +510,6 @@ class InventoryService
         ?CarbonInterface $alertDate = null,
     ): InventoryAlert {
         $alert = $this->makeAlert($inventory, $staff, $remarks, $alertDate);
-
         $remarkText = $remarks !== null && trim($remarks) !== '' ? ' Remarks: '.trim($remarks) : '';
 
         $this->audit()->record(
@@ -280,19 +523,6 @@ class InventoryService
         );
 
         return $alert;
-    }
-
-    /**
-     * Active (not archived) materials ordered by name.
-     *
-     * @return Collection<int, Inventory>
-     */
-    public function getInventoryList(): Collection
-    {
-        return Inventory::query()
-            ->active()
-            ->orderBy('material_name')
-            ->get();
     }
 
     /**
@@ -409,6 +639,45 @@ class InventoryService
             throw ValidationException::withMessages([
                 'inventory' => "\"{$inventory->material_name}\" is archived. Restore it first.",
             ]);
+        }
+    }
+
+    /**
+     * @param  list<string>  $specialties
+     */
+    private function replaceSpecialties(Inventory $inventory, array $specialties): void
+    {
+        $specialties = array_values(array_unique($specialties));
+
+        if (in_array('all', $specialties, true)) {
+            $specialties = ['all'];
+        }
+
+        $inventory->specialties()->delete();
+
+        $inventory->specialties()->createMany(array_map(
+            fn (string $specialty): array => ['specialty' => $specialty],
+            $specialties,
+        ));
+    }
+
+    /**
+     * @param  list<string>  $specialties
+     */
+    private function validateSpecialties(array $specialties): void
+    {
+        if ($specialties === []) {
+            throw ValidationException::withMessages([
+                'specialties' => 'Select at least one staff specialty or all specialties.',
+            ]);
+        }
+
+        foreach ($specialties as $specialty) {
+            if (! is_string($specialty) || ($specialty !== 'all' && StaffSpecialtyType::tryFrom($specialty) === null)) {
+                throw ValidationException::withMessages([
+                    'specialties' => 'Select only documented staff specialties.',
+                ]);
+            }
         }
     }
 

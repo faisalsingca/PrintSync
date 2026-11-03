@@ -39,6 +39,10 @@ class InventorySeeder extends Seeder
             $inventory->low_stock_level = $attributes['low_stock_level'];
             $inventory->status = $inventory->stockStatus();
             $inventory->save();
+
+            if (! $inventory->specialties()->exists()) {
+                $inventory->specialties()->create(['specialty' => 'all']);
+            }
         }
     }
 }

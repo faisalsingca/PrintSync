@@ -26,6 +26,11 @@ function createStaffOrderManagementOrder(User $customer, array $attributes = [])
 
 function assignStaffOrderManagementOrder(Order $order, User $staff): void
 {
+    StaffSpecialty::query()->firstOrCreate([
+        'staff_id' => $staff->id,
+        'specialty' => StaffSpecialtyType::GraphicDesigner->value,
+    ]);
+
     OrderAssignment::create([
         'order_id' => $order->order_id,
         'staff_id' => $staff->id,
@@ -115,6 +120,27 @@ test('staff can open details for an assigned order', function () {
         ->assertSee('In Progress');
 });
 
+test('eligible staff cannot update an order until it has a primary assignment', function () {
+    $staff = User::factory()->create(['role' => 'staff']);
+    $customer = User::factory()->create(['role' => 'customer']);
+    $order = createStaffOrderManagementOrder($customer);
+    StaffSpecialty::query()->create([
+        'staff_id' => $staff->id,
+        'specialty' => StaffSpecialtyType::GraphicDesigner->value,
+    ]);
+
+    $this->actingAs($staff);
+
+    Livewire::test('pages::staff.order-details', ['order' => $order])
+        ->call('updateProductionStatus', OrderStatus::InProgress->value)
+        ->assertForbidden();
+
+    $this->assertDatabaseHas('orders', [
+        'order_id' => $order->order_id,
+        'status' => 'pending',
+    ]);
+});
+
 test('staff receive forbidden when opening an order assigned to another staff member', function () {
     $staff = User::factory()->create(['role' => 'staff']);
     $assignedStaff = User::factory()->create(['role' => 'staff']);
@@ -170,7 +196,7 @@ test('assigned staff can advance an order through each production status', funct
         'order_id' => $order->order_id,
         'staff_id' => $staff->id,
         'assignment_status' => OrderAssignment::STATUS_ACCEPTED,
-        'is_active' => true,
+        'is_active' => null,
     ]);
 
     $this->actingAs($customer)
@@ -188,6 +214,76 @@ test('assigned staff can advance an order through each production status', funct
         ->assertSee('Completed');
 });
 
+test('eligible staff can take over an order with a reason while preserving its original assignee', function () {
+    $originalStaff = User::factory()->create(['role' => 'staff']);
+    $coveringStaff = User::factory()->create(['role' => 'staff']);
+    $customer = User::factory()->create(['role' => 'customer']);
+    $order = createStaffOrderManagementOrder($customer);
+    prepareStaffOrderManagementOrderForProduction($order);
+    assignStaffOrderManagementOrder($order, $originalStaff);
+    StaffSpecialty::query()->create([
+        'staff_id' => $coveringStaff->id,
+        'specialty' => StaffSpecialtyType::GraphicDesigner->value,
+    ]);
+
+    $this->actingAs($coveringStaff);
+
+    Livewire::test('pages::staff.order-details', ['order' => $order])
+        ->call('takeOver')
+        ->assertHasErrors(['takeoverReason' => 'required'])
+        ->set('takeoverReason', 'Original assignee is unavailable')
+        ->call('takeOver')
+        ->assertHasNoErrors()
+        ->assertSee($originalStaff->name)
+        ->assertSee($coveringStaff->name)
+        ->assertSee('Original assignee is unavailable')
+        ->call('updateProductionStatus', OrderStatus::InProgress->value)
+        ->assertHasNoErrors()
+        ->assertSee('In Progress');
+
+    $this->assertDatabaseHas('order_assignments', [
+        'order_id' => $order->order_id,
+        'staff_id' => $originalStaff->id,
+        'assignment_status' => OrderAssignment::STATUS_ACCEPTED,
+        'is_active' => true,
+    ]);
+    $this->assertDatabaseHas('order_takeovers', [
+        'order_id' => $order->order_id,
+        'assignment_id' => $order->assignments()->sole()->assignment_id,
+        'covering_staff_id' => $coveringStaff->id,
+        'reason' => 'Original assignee is unavailable',
+    ]);
+    $this->assertDatabaseHas('audit_logs', [
+        'action' => 'staff.order_taken_over',
+        'user_id' => $coveringStaff->id,
+        'subject_id' => $order->takeovers()->sole()->takeover_id,
+    ]);
+
+    $owner = User::factory()->create(['role' => 'owner']);
+    $cashier = User::factory()->create(['role' => 'cashier', 'email_verified_at' => now()]);
+
+    $this->actingAs($owner)
+        ->get(route('owner.routing'))
+        ->assertOk()
+        ->assertSee($originalStaff->name)
+        ->assertSee($coveringStaff->name)
+        ->assertSee('Original assignee is unavailable');
+
+    $this->actingAs($cashier)
+        ->get(route('cashier.routing'))
+        ->assertOk()
+        ->assertSee($originalStaff->name)
+        ->assertSee($coveringStaff->name)
+        ->assertSee('Original assignee is unavailable')
+        ->assertSee(route('cashier.orders.show', $order), false);
+
+    $this->actingAs($originalStaff);
+
+    Livewire::test('pages::staff.order-details', ['order' => $order])
+        ->call('updateProductionStatus', OrderStatus::ReadyForPickup->value)
+        ->assertForbidden();
+});
+
 test('assigned staff cannot skip or reverse a production status', function (string $currentStatus, string $requestedStatus) {
     $staff = User::factory()->create(['role' => 'staff']);
     $customer = User::factory()->create(['role' => 'customer']);
@@ -196,9 +292,14 @@ test('assigned staff cannot skip or reverse a production status', function (stri
     assignStaffOrderManagementOrder($order, $staff);
     $this->actingAs($staff);
 
-    Livewire::test('pages::staff.order-details', ['order' => $order])
-        ->call('updateProductionStatus', $requestedStatus)
-        ->assertHasErrors(['status']);
+    $component = Livewire::test('pages::staff.order-details', ['order' => $order])
+        ->call('updateProductionStatus', $requestedStatus);
+
+    if ($currentStatus === OrderStatus::Completed->value) {
+        $component->assertForbidden();
+    } else {
+        $component->assertHasErrors(['status']);
+    }
 
     $this->assertDatabaseHas('orders', [
         'order_id' => $order->order_id,
@@ -231,6 +332,10 @@ test('offered staff tasks cannot update production status before acceptance', fu
     $staff = User::factory()->create(['role' => 'staff']);
     $customer = User::factory()->create(['role' => 'customer']);
     $order = createStaffOrderManagementOrder($customer);
+    StaffSpecialty::query()->create([
+        'staff_id' => $staff->id,
+        'specialty' => StaffSpecialtyType::GraphicDesigner->value,
+    ]);
     OrderAssignment::create([
         'order_id' => $order->order_id,
         'staff_id' => $staff->id,

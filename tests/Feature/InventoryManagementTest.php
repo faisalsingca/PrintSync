@@ -2,6 +2,7 @@
 
 use App\Models\AuditLog;
 use App\Models\Inventory;
+use App\Models\InventorySpecialty;
 use App\Models\StaffSpecialty;
 use App\Models\User;
 use App\Services\InventoryService;
@@ -23,13 +24,20 @@ function inventoryTestCashier(): User
 
 function inventoryTestItem(string $name = 'Vinyl', string $quantity = '4.000'): Inventory
 {
-    return Inventory::query()->create([
+    $item = Inventory::query()->create([
         'material_name' => $name,
         'quantity' => $quantity,
         'unit' => 'roll',
         'low_stock_level' => '10',
         'status' => Inventory::STATUS_LOW_STOCK,
     ]);
+
+    InventorySpecialty::query()->create([
+        'inventory_id' => $item->inventory_id,
+        'specialty' => 'all',
+    ]);
+
+    return $item;
 }
 
 test('the cashier can add a material and it is written to the audit log', function () {
@@ -196,8 +204,7 @@ test('archived materials are left out of the lists, counts and open reports', fu
     $service = new InventoryService;
     $kept = inventoryTestItem('Kept', '4.000');
     $gone = inventoryTestItem('Gone', '4.000');
-    $staff = inventoryTestStaff('sewer');
-    $service->createLowStockAlert($gone, $staff, 'Low');
+    $service->deductStock($gone, inventoryTestCashier(), '4');
     $service->archiveMaterial($gone);
 
     expect($service->getInventoryList()->pluck('material_name')->all())->toBe(['Kept'])
@@ -206,61 +213,164 @@ test('archived materials are left out of the lists, counts and open reports', fu
         ->and($service->getOpenLowStockAlerts())->toHaveCount(0);
 });
 
-test('staff of any specialty except graphic design can report low stock and the cashier receives it', function (string $specialty) {
-    $staff = inventoryTestStaff($specialty);
-    $item = inventoryTestItem('Sticker Paper');
+test('staff report material use without changing stock or creating a false low-stock alert', function () {
+    $staff = inventoryTestStaff('sewer');
+    $item = inventoryTestItem('Sticker Paper', '100.000');
+    $item->forceFill(['status' => Inventory::STATUS_IN_STOCK])->save();
     $this->actingAs($staff);
 
-    Livewire::test('pages::staff.inventory')
-        ->set("alertRemarks.{$item->inventory_id}", 'Only a few left')
-        ->call('reportLowStock', $item->inventory_id)
+    $component = Livewire::test('pages::staff.inventory')
+        ->set("adjustmentQuantities.{$item->inventory_id}", '3')
+        ->set("adjustmentRemarks.{$item->inventory_id}", 'Used for poster order')
+        ->call('reportMaterialUse', $item->inventory_id)
         ->assertHasNoErrors();
 
-    $this->assertDatabaseHas('inventory_alerts', [
+    $this->assertDatabaseHas('inventory_adjustment_requests', [
         'inventory_id' => $item->inventory_id,
         'staff_id' => $staff->id,
-        'alert_type' => 'low_stock',
-        'remarks' => 'Only a few left',
+        'quantity' => '3.000',
+        'remarks' => 'Used for poster order',
+        'status' => 'pending',
     ]);
-    $this->assertDatabaseHas('audit_logs', ['action' => 'inventory.low_stock_reported', 'user_id' => $staff->id]);
+    $this->assertDatabaseHas('inventory', [
+        'inventory_id' => $item->inventory_id,
+        'quantity' => '100.000',
+        'status' => Inventory::STATUS_IN_STOCK,
+    ]);
+    $this->assertDatabaseCount('inventory_alerts', 0);
 
-    $this->actingAs(inventoryTestCashier());
+    $component->assertSee('Pending Review')
+        ->assertSee('Used for poster order')
+        ->set("adjustmentQuantities.{$item->inventory_id}", '1')
+        ->call('reportMaterialUse', $item->inventory_id)
+        ->assertHasErrors(['quantity'])
+        ->assertSee('You already have an open usage report for this material.');
 
-    $this->get(route('cashier.low-stock-reports'))
-        ->assertOk()
-        ->assertSee('Sticker Paper')
-        ->assertSee($staff->name)
-        ->assertSee('Only a few left');
-})->with([
-    'sewer' => ['sewer'],
-    'machine operator' => ['machine_operator'],
-    'book binder' => ['book_binder'],
-]);
+    $this->assertDatabaseCount('inventory_adjustment_requests', 1);
+});
 
-test('graphic designers cannot open the low-stock page or report low stock', function () {
+test('graphic designers cannot open the material-use page', function () {
     $this->actingAs(inventoryTestStaff('graphic_designer'));
 
     $this->get(route('staff.inventory'))->assertForbidden();
 
-    expect(auth()->user()->can('createLowStockAlert', Inventory::class))->toBeFalse();
+    expect(auth()->user()->canReportMaterialUse())->toBeFalse();
 });
 
-test('a staff member cannot send the same unhandled report twice', function () {
-    $item = inventoryTestItem();
-    $this->actingAs(inventoryTestStaff('book_binder'));
+test('staff inventory is limited to materials mapped to their specialties', function () {
+    $staff = inventoryTestStaff('book_binder');
+    $allMaterial = inventoryTestItem('Universal paper');
+    $binderMaterial = inventoryTestItem('Binding thread');
+    $sewingMaterial = inventoryTestItem('Sewing fabric');
+    $service = new InventoryService;
+    $service->updateMaterialSpecialties($binderMaterial, ['book_binder']);
+    $service->updateMaterialSpecialties($sewingMaterial, ['sewer']);
+
+    expect($service->getStaffInventoryList($staff)->pluck('inventory_id')->all())
+        ->toContain($allMaterial->inventory_id, $binderMaterial->inventory_id)
+        ->not->toContain($sewingMaterial->inventory_id);
+
+    $this->actingAs($staff);
 
     Livewire::test('pages::staff.inventory')
-        ->call('reportLowStock', $item->inventory_id)
-        ->call('reportLowStock', $item->inventory_id);
+        ->call('reportMaterialUse', $sewingMaterial->inventory_id)
+        ->assertForbidden();
+});
 
-    $this->assertDatabaseCount('inventory_alerts', 1);
+test('manager review changes report status then deducts stock when completed', function () {
+    $staff = inventoryTestStaff('sewer');
+    $cashier = inventoryTestCashier();
+    $item = inventoryTestItem('Sublimation fabric', '40.000');
+    $this->actingAs($staff);
+
+    Livewire::test('pages::staff.inventory')
+        ->set("adjustmentQuantities.{$item->inventory_id}", '5')
+        ->set("adjustmentRemarks.{$item->inventory_id}", 'Order 42')
+        ->call('reportMaterialUse', $item->inventory_id)
+        ->assertHasNoErrors();
+
+    $request = $item->adjustmentRequests()->sole();
+
+    $this->actingAs($cashier);
+
+    Livewire::test('pages::cashier.inventory')
+        ->call('startAdjustmentReview', $request->request_id)
+        ->assertHasNoErrors()
+        ->assertSee('in progress');
+
+    $this->assertDatabaseHas('inventory', [
+        'inventory_id' => $item->inventory_id,
+        'quantity' => '40.000',
+    ]);
+    $this->assertDatabaseHas('inventory_adjustment_requests', [
+        'request_id' => $request->request_id,
+        'status' => 'in_progress',
+    ]);
+
+    $this->actingAs($staff);
+
+    Livewire::test('pages::staff.inventory')
+        ->assertSee('In Progress')
+        ->assertSee('Order 42');
+
+    $this->actingAs($cashier);
+
+    Livewire::test('pages::cashier.inventory')
+        ->call('completeAdjustment', $request->request_id)
+        ->assertHasNoErrors()
+        ->assertSee('completed and stock was updated');
+
+    $this->assertDatabaseHas('inventory', [
+        'inventory_id' => $item->inventory_id,
+        'quantity' => '35.000',
+        'status' => Inventory::STATUS_IN_STOCK,
+    ]);
+    $this->assertDatabaseHas('inventory_adjustment_requests', [
+        'request_id' => $request->request_id,
+        'status' => 'completed',
+    ]);
+
+    $this->actingAs($staff);
+
+    Livewire::test('pages::staff.inventory')
+        ->assertDontSee('Order 42')
+        ->assertSee('No usage reports are waiting for review.');
+});
+
+test('a report that exceeds available stock stays open and does not change quantity', function () {
+    $staff = inventoryTestStaff('sewer');
+    $cashier = inventoryTestCashier();
+    $item = inventoryTestItem('Vinyl', '4.000');
+    $this->actingAs($staff);
+
+    Livewire::test('pages::staff.inventory')
+        ->set("adjustmentQuantities.{$item->inventory_id}", '5')
+        ->call('reportMaterialUse', $item->inventory_id)
+        ->assertHasNoErrors();
+
+    $request = $item->adjustmentRequests()->sole();
+    $this->actingAs($cashier);
+
+    Livewire::test('pages::cashier.inventory')
+        ->call('startAdjustmentReview', $request->request_id)
+        ->call('completeAdjustment', $request->request_id)
+        ->assertSee('Only 4 roll left');
+
+    $this->assertDatabaseHas('inventory', [
+        'inventory_id' => $item->inventory_id,
+        'quantity' => '4.000',
+    ]);
+    $this->assertDatabaseHas('inventory_adjustment_requests', [
+        'request_id' => $request->request_id,
+        'status' => 'in_progress',
+    ]);
 });
 
 test('a report is cleared once the cashier adds stock', function () {
     $cashier = inventoryTestCashier();
-    $item = inventoryTestItem();
+    $item = inventoryTestItem('Vinyl', '12.000');
     $service = new InventoryService;
-    $service->createLowStockAlert($item, inventoryTestStaff('sewer'), 'Low', now()->subMinute());
+    $service->deductStock($item, $cashier, '3');
 
     expect($service->getOpenLowStockAlerts())->toHaveCount(1);
 

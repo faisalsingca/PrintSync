@@ -11,8 +11,8 @@
         'staff' => array_values(array_filter([
             ['Dashboard', 'home', route('staff.dashboard'), request()->routeIs('staff.dashboard')],
             ['View Assigned Orders', 'clipboard-document-list', route('staff.orders'), request()->routeIs('staff.orders', 'staff.orders.show')],
-            auth()->user()->canReportLowStock()
-                ? ['Report Low Stock', 'exclamation-triangle', route('staff.inventory'), request()->routeIs('staff.inventory')]
+            auth()->user()->canReportMaterialUse()
+                ? ['Report Material Use', 'exclamation-triangle', route('staff.inventory'), request()->routeIs('staff.inventory')]
                 : null,
         ])),
         'cashier' => [
@@ -22,6 +22,7 @@
             ['Payment Records', 'document-text', route('cashier.payment-records'), request()->routeIs('cashier.payment-records')],
             ['Inventory', 'cube', route('cashier.inventory'), request()->routeIs('cashier.inventory')],
             ['Add Material', 'plus', route('cashier.inventory.create'), request()->routeIs('cashier.inventory.create')],
+            ['Order Routing', 'arrows-right-left', route('cashier.routing'), request()->routeIs('cashier.routing')],
             ['Low-Stock Reports', 'exclamation-triangle', route('cashier.low-stock-reports'), request()->routeIs('cashier.low-stock-reports')],
             ['Archived Materials', 'archive-box', route('cashier.inventory.archive'), request()->routeIs('cashier.inventory.archive')],
         ],
@@ -32,7 +33,7 @@
             ['Orders by Status', 'chart-bar', route('owner.orders-status'), request()->routeIs('owner.orders-status')],
             ['Order Routing', 'arrows-right-left', route('owner.routing'), request()->routeIs('owner.routing')],
             ['Staff Specialties', 'users', route('owner.specialties'), request()->routeIs('owner.specialties')],
-            ['Inventory Materials', 'cube', route('owner.inventory'), request()->routeIs('owner.inventory')],
+            ['Inventory', 'cube', route('owner.inventory'), request()->routeIs('owner.inventory')],
             ['Low-Stock Alerts', 'exclamation-triangle', route('owner.low-stock'), request()->routeIs('owner.low-stock')],
             ['Saved Payments', 'banknotes', route('owner.payments'), request()->routeIs('owner.payments')],
             ['Audit Log', 'shield-check', route('owner.audit-logs'), request()->routeIs('owner.audit-logs')],
