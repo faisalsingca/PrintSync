@@ -10,6 +10,6 @@
             </flux:button>
         </form>
 
-        <flux:link :href="route('login')">{{ __('Return to log in') }}</flux:link>
+        <flux:link :href="route('login')" wire:navigate>{{ __('Return to log in') }}</flux:link>
     </div>
 </x-layouts::auth>

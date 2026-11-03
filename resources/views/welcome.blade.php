@@ -43,7 +43,7 @@
 
         <div class="mx-auto flex min-h-screen max-w-7xl flex-col gap-12 px-5 py-5 sm:px-8 lg:gap-20 lg:px-10">
             <header class="ps-glass flex items-center justify-between gap-4 px-4 py-3 sm:px-6">
-                <a href="{{ route('home') }}" class="flex items-center gap-3 font-semibold tracking-tight" aria-label="PrintSync home">
+                <a href="{{ route('home') }}" wire:navigate class="flex items-center gap-3 font-semibold tracking-tight" aria-label="PrintSync home">
                     <span class="ps-brand-mark" aria-hidden="true">PS</span>
                     <span class="text-lg">PrintSync</span>
                 </a>
@@ -56,13 +56,13 @@
                 <div class="flex items-center gap-2 sm:gap-3">
                     <x-appearance-toggle />
                     @auth
-                        <a class="ps-button-primary hidden sm:inline-flex" href="{{ route('dashboard') }}">My workspace</a>
+                        <a class="ps-button-primary hidden sm:inline-flex" href="{{ route('dashboard') }}" wire:navigate>My workspace</a>
                     @else
                         @if (Route::has('login'))
-                            <a class="ps-button-secondary hidden sm:inline-flex" href="{{ route('login') }}">Sign in</a>
+                            <a class="ps-button-secondary hidden sm:inline-flex" href="{{ route('login') }}" wire:navigate>Sign in</a>
                         @endif
                         @if (Route::has('register'))
-                            <a class="ps-button-primary" href="{{ route('register') }}">Get started</a>
+                            <a class="ps-button-primary" href="{{ route('register') }}" wire:navigate>Get started</a>
                         @endif
                     @endauth
                 </div>
@@ -87,23 +87,23 @@
                         <div class="flex w-full flex-wrap items-center gap-3">
                             @auth
                                 @if (auth()->user()->role === 'customer')
-                                    <a class="ps-button-primary" href="{{ route('customer.orders.create') }}">
+                                    <a class="ps-button-primary" href="{{ route('customer.orders.create') }}" wire:navigate>
                                         Start an order
                                         <span aria-hidden="true">→</span>
                                     </a>
-                                    <a class="ps-button-secondary" href="{{ route('customer.orders') }}">View my orders</a>
+                                    <a class="ps-button-secondary" href="{{ route('customer.orders') }}" wire:navigate>View my orders</a>
                                 @else
-                                    <a class="ps-button-primary" href="{{ route('dashboard') }}">Open your workspace</a>
+                                    <a class="ps-button-primary" href="{{ route('dashboard') }}" wire:navigate>Open your workspace</a>
                                 @endif
                             @else
                                 @if (Route::has('register'))
-                                    <a class="ps-button-primary" href="{{ route('register') }}">
+                                    <a class="ps-button-primary" href="{{ route('register') }}" wire:navigate>
                                         Create your account
                                         <span aria-hidden="true">→</span>
                                     </a>
                                 @endif
                                 @if (Route::has('login'))
-                                    <a class="ps-button-secondary sm:hidden" href="{{ route('login') }}">Sign in</a>
+                                    <a class="ps-button-secondary sm:hidden" href="{{ route('login') }}" wire:navigate>Sign in</a>
                                 @endif
                             @endauth
                         </div>
@@ -192,16 +192,16 @@
                     <div class="flex shrink-0 flex-wrap gap-3">
                         @auth
                             @if (auth()->user()->role === 'customer')
-                                <a class="ps-button-primary" href="{{ route('customer.orders.create') }}">Create an order</a>
+                                <a class="ps-button-primary" href="{{ route('customer.orders.create') }}" wire:navigate>Create an order</a>
                             @else
-                                <a class="ps-button-primary" href="{{ route('dashboard') }}">Open your workspace</a>
+                                <a class="ps-button-primary" href="{{ route('dashboard') }}" wire:navigate>Open your workspace</a>
                             @endif
                         @else
                             @if (Route::has('register'))
-                                <a class="ps-button-primary" href="{{ route('register') }}">Create your account</a>
+                                <a class="ps-button-primary" href="{{ route('register') }}" wire:navigate>Create your account</a>
                             @endif
                             @if (Route::has('login'))
-                                <a class="ps-button-secondary" href="{{ route('login') }}">Sign in</a>
+                                <a class="ps-button-secondary" href="{{ route('login') }}" wire:navigate>Sign in</a>
                             @endif
                         @endauth
                     </div>
@@ -209,7 +209,7 @@
             </main>
 
             <footer class="flex flex-col gap-3 border-t border-[var(--ps-border)] py-6 text-sm text-[var(--ps-muted)] sm:flex-row sm:items-center sm:justify-between">
-                <a href="{{ route('home') }}" class="flex items-center gap-2 font-medium text-[var(--ps-text)]">
+                <a href="{{ route('home') }}" wire:navigate class="flex items-center gap-2 font-medium text-[var(--ps-text)]">
                     <span class="ps-brand-mark" aria-hidden="true">PS</span>
                     PrintSync
                 </a>
@@ -217,6 +217,7 @@
             </footer>
         </div>
 
+        @livewireScripts
         @fluxScripts
     </body>
 </html>

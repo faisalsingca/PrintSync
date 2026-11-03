@@ -40,7 +40,7 @@
                 @csrf
                 <flux:button type="submit" variant="ghost" size="sm">{{ __('Resend code') }}</flux:button>
             </form>
-            <flux:link :href="route('login')">{{ __('Back to log in') }}</flux:link>
+            <flux:link :href="route('login')" wire:navigate>{{ __('Back to log in') }}</flux:link>
         </div>
     </div>
 </x-layouts::auth>

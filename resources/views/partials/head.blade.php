@@ -22,11 +22,13 @@
 @fluxAppearance
 
 <style>
-    :root {
+    html,
+    body {
         background-color: #f3f5f0;
     }
 
-    :root.dark {
+    html.dark,
+    html.dark body {
         background-color: #090b09;
     }
 </style>
