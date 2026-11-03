@@ -11,13 +11,27 @@
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
-        @fluxAppearance
-
         <script>
-            if (!window.localStorage.getItem('flux.appearance')) {
-                window.Flux.applyAppearance('dark');
+            if (!window.localStorage.getItem('printsync.appearance-initialized')) {
+                if (!window.localStorage.getItem('flux.appearance')) {
+                    window.localStorage.setItem('flux.appearance', 'dark');
+                }
+
+                window.localStorage.setItem('printsync.appearance-initialized', '1');
             }
         </script>
+
+        @fluxAppearance
+
+        <style>
+            :root {
+                background-color: #f3f5f0;
+            }
+
+            :root.dark {
+                background-color: #090b09;
+            }
+        </style>
 
         @fonts
         @vite(['resources/css/app.css', 'resources/js/app.js'])
