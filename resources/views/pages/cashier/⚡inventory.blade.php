@@ -402,6 +402,9 @@ new #[Title('Cashier Inventory')] class extends Component
                             {{ $request->inventory->material_name }} · {{ $fmt($request->quantity) }} {{ $request->inventory->unit }}
                         </h3>
                         <p class="text-sm text-[var(--ps-muted)]">Reported by {{ $request->staff->name }} · {{ $request->created_at->format('M j, Y g:i A') }}</p>
+                        @if ($request->order_id)
+                            <p class="text-sm text-[var(--ps-muted)]">Order #{{ $request->order_id }}</p>
+                        @endif
                         @if ($request->remarks)
                             <p class="text-sm text-[var(--ps-muted)]">Remarks: {{ $request->remarks }}</p>
                         @endif

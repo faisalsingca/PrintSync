@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Inventory;
 use App\Models\InventoryAdjustmentRequest;
 use App\Models\InventoryAlert;
+use App\Models\Order;
 use App\Models\StockIn;
 use App\Models\User;
 use App\StaffSpecialtyType;
@@ -308,8 +309,9 @@ class InventoryService
         User $staff,
         string $quantity,
         ?string $remarks = null,
+        ?Order $order = null,
     ): InventoryAdjustmentRequest {
-        return DB::transaction(function () use ($inventory, $staff, $quantity, $remarks): InventoryAdjustmentRequest {
+        return DB::transaction(function () use ($inventory, $staff, $quantity, $remarks, $order): InventoryAdjustmentRequest {
             $lockedInventory = Inventory::query()
                 ->lockForUpdate()
                 ->findOrFail($inventory->inventory_id);
@@ -322,22 +324,34 @@ class InventoryService
                 ]);
             }
 
-            $hasOpenRequest = $lockedInventory->adjustmentRequests()
-                ->where('staff_id', $staff->id)
-                ->whereIn('status', [
-                    InventoryAdjustmentRequest::STATUS_PENDING,
-                    InventoryAdjustmentRequest::STATUS_IN_PROGRESS,
-                ])
-                ->exists();
+            $existingRequests = $lockedInventory->adjustmentRequests()
+                ->where('staff_id', $staff->id);
+
+            if ($order !== null) {
+                $hasOpenRequest = $existingRequests
+                    ->where('order_id', $order->order_id)
+                    ->exists();
+            } else {
+                $hasOpenRequest = $existingRequests
+                    ->whereNull('order_id')
+                    ->whereIn('status', [
+                        InventoryAdjustmentRequest::STATUS_PENDING,
+                        InventoryAdjustmentRequest::STATUS_IN_PROGRESS,
+                    ])
+                    ->exists();
+            }
 
             if ($hasOpenRequest) {
                 throw ValidationException::withMessages([
-                    'quantity' => 'You already have an open usage report for this material.',
+                    'quantity' => $order === null
+                        ? 'You already have an open usage report for this material.'
+                        : 'You already reported this material for this order.',
                 ]);
             }
 
             $request = InventoryAdjustmentRequest::create([
                 'inventory_id' => $lockedInventory->inventory_id,
+                'order_id' => $order?->order_id,
                 'staff_id' => $staff->id,
                 'quantity' => $quantity,
                 'remarks' => $remarks,
@@ -352,6 +366,7 @@ class InventoryService
                 $request->request_id,
                 $lockedInventory->material_name,
                 array_filter([
+                    'order_id' => $order?->order_id,
                     'quantity' => $this->plain($quantity),
                     'remarks' => $remarks,
                 ]),
@@ -495,6 +510,20 @@ class InventoryService
             ])
             ->when($viewer->role === 'staff', fn (Builder $query) => $query->where('staff_id', $viewer->id))
             ->with(['inventory', 'staff', 'startedBy'])
+            ->latest('created_at')
+            ->latest('request_id')
+            ->get();
+    }
+
+    /**
+     * Material-use reports associated with a specific order.
+     *
+     * @return Collection<int, InventoryAdjustmentRequest>
+     */
+    public function getOrderAdjustmentRequests(Order $order): Collection
+    {
+        return $order->inventoryAdjustmentRequests()
+            ->with(['inventory', 'staff', 'startedBy', 'completedBy'])
             ->latest('created_at')
             ->latest('request_id')
             ->get();

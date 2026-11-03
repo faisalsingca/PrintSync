@@ -11,6 +11,7 @@ use Illuminate\Support\Carbon;
 /**
  * @property int $request_id
  * @property int $inventory_id
+ * @property int|null $order_id
  * @property int $staff_id
  * @property int|null $started_by
  * @property int|null $completed_by
@@ -21,7 +22,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $completed_at
  */
 #[Table(key: 'request_id')]
-#[Fillable(['inventory_id', 'staff_id', 'started_by', 'completed_by', 'quantity', 'remarks', 'status', 'started_at', 'completed_at'])]
+#[Fillable(['inventory_id', 'order_id', 'staff_id', 'started_by', 'completed_by', 'quantity', 'remarks', 'status', 'started_at', 'completed_at'])]
 class InventoryAdjustmentRequest extends Model
 {
     public const STATUS_PENDING = 'pending';
@@ -33,6 +34,11 @@ class InventoryAdjustmentRequest extends Model
     public function inventory(): BelongsTo
     {
         return $this->belongsTo(Inventory::class, 'inventory_id', 'inventory_id');
+    }
+
+    public function order(): BelongsTo
+    {
+        return $this->belongsTo(Order::class, 'order_id', 'order_id');
     }
 
     public function staff(): BelongsTo
