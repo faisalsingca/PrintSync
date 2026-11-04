@@ -106,6 +106,14 @@ class Inventory extends Model
     }
 
     /**
+     * Get the staff specialties allowed to use this inventory item.
+     */
+    public function specialties(): HasMany
+    {
+        return $this->hasMany(InventorySpecialty::class, 'inventory_id', 'inventory_id');
+    }
+
+    /**
      * Get the low-stock alerts for this inventory item.
      */
     public function alerts(): HasMany
