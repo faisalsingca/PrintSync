@@ -2,8 +2,8 @@
 
 use App\Models\User;
 use App\Notifications\ApproveEmailChange;
-use App\Rules\EmailDomainHasMailRoute;
 use App\Notifications\VerifyPendingEmail;
+use App\Rules\EmailDomainHasMailRoute;
 use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
 
@@ -32,10 +32,14 @@ test('profile information can be updated', function () {
         ->set('name', 'Test User')
         ->set('email', 'test@example.com')
         ->assertSee('Confirm new email')
+        ->assertSee('Send verification links')
         ->set('emailConfirmation', 'test@example.com')
         ->call('updateProfileInformation');
 
-    $response->assertHasNoErrors();
+    $response
+        ->assertHasNoErrors()
+        ->assertSee('Cancel email change')
+        ->assertSee('dark:bg-amber-950/40', false);
 
     $user->refresh();
 

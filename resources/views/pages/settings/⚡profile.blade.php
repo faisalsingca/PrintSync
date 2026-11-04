@@ -162,10 +162,13 @@ new #[Title('Profile settings')] class extends Component {
                         {{ __('Enter the new address again to catch typing mistakes. We will send the verification email only if both addresses match.') }}
                     </flux:text>
                     @error('emailConfirmation') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+                    <flux:text class="mt-2">
+                        {{ __('We can check the address format and mail domain, but only the recipient can confirm that this inbox is accessible by opening the verification link we send.') }}
+                    </flux:text>
                 @endif
 
                 @if ($pendingEmailChange)
-                    <div class="mt-4 space-y-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    <div class="mt-4 space-y-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
                         <p>
                             {{ __('A change to :email is pending. The current address will remain on your account until the required confirmations are complete.', ['email' => $pendingEmailChange->new_email]) }}
                         </p>
@@ -178,7 +181,13 @@ new #[Title('Profile settings')] class extends Component {
                             <p>{{ __('Verify the new address using the link we sent. Your current address was not previously verified, so it does not need to approve the change.') }}</p>
                         @endif
 
-                        <flux:button type="button" variant="ghost" size="sm" wire:click="cancelEmailChange">
+                        <flux:button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            class="!text-amber-950 hover:!bg-amber-200 dark:!text-amber-100 dark:hover:!bg-amber-900"
+                            wire:click="cancelEmailChange"
+                        >
                             {{ __('Cancel email change') }}
                         </flux:button>
                     </div>
@@ -208,7 +217,11 @@ new #[Title('Profile settings')] class extends Component {
             <div class="flex items-center gap-4">
                 <div class="flex items-center justify-end">
                     <flux:button variant="primary" type="submit" class="w-full" data-test="update-profile-button">
-                        {{ __('Save') }}
+                        @if ($email !== Auth::user()->email && $email !== $pendingEmailChange?->new_email)
+                            {{ __('Send verification links') }}
+                        @else
+                            {{ __('Save') }}
+                        @endif
                     </flux:button>
                 </div>
 
