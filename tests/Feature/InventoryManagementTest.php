@@ -5,6 +5,8 @@ use App\Models\Inventory;
 use App\Models\StaffSpecialty;
 use App\Models\User;
 use App\Services\InventoryService;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Livewire\Livewire;
 
@@ -31,6 +33,25 @@ function inventoryTestItem(string $name = 'Vinyl', string $quantity = '4.000'): 
         'status' => Inventory::STATUS_LOW_STOCK,
     ]);
 }
+
+test('inventory specialty migration can be retried when inventory id already exists', function () {
+    $item = inventoryTestItem();
+
+    Schema::table('inventory_specialties', function (Blueprint $table): void {
+        $table->dropUnique('inventory_specialties_inventory_id_specialty_unique');
+        $table->dropColumn('specialty');
+    });
+
+    $migration = require database_path('migrations/2026_11_04_032016_add_inventory_fields_to_inventory_specialties_table.php');
+    $migration->up();
+
+    $item->specialties()->create(['specialty' => 'sewer']);
+
+    $this->assertDatabaseHas('inventory_specialties', [
+        'inventory_id' => $item->inventory_id,
+        'specialty' => 'sewer',
+    ]);
+});
 
 test('the cashier can add a material and it is written to the audit log', function () {
     $cashier = inventoryTestCashier();
