@@ -2,7 +2,6 @@
 
 use App\Models\Inventory;
 use App\Services\InventoryService;
-use App\StaffSpecialtyType;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
@@ -19,10 +18,6 @@ new #[Title('Add Material')] class extends Component
 
     public string $low_stock_level = '10';
 
-    public array $specialties = [];
-
-    public bool $allSpecialties = true;
-
     public function mount(): void
     {
         Gate::authorize('manage', Inventory::class);
@@ -37,28 +32,18 @@ new #[Title('Add Material')] class extends Component
             'quantity' => ['required', 'numeric', 'min:0', 'max:999999999', 'decimal:0,3'],
             'unit' => ['required', 'string', 'max:30'],
             'low_stock_level' => ['required', 'numeric', 'min:0', 'max:999999999', 'decimal:0,3'],
-            'specialties' => ['array', Rule::when(! $this->allSpecialties, ['min:1'])],
-            'specialties.*' => ['string', 'distinct', Rule::enum(StaffSpecialtyType::class)],
         ], [
             'material_name.unique' => 'A material with this name already exists (it may be in Archived Materials).',
-            'specialties.min' => 'Select at least one specialty or choose all specialties.',
         ]);
 
-        $validated['specialties'] = $this->allSpecialties ? ['all'] : $validated['specialties'];
         $inventoryService->createMaterial($validated, auth()->user());
 
         session()->flash('status', "{$validated['material_name']} was added to inventory.");
 
-        $routePrefix = auth()->user()->role === 'owner' ? 'owner' : 'cashier';
-
-        return redirect()->route($routePrefix.'.inventory');
+        return redirect()->route('cashier.inventory');
     }
 };
 ?>
-
-@php
-    $inventoryRoutePrefix = auth()->user()->role === 'owner' ? 'owner' : 'cashier';
-@endphp
 
 <div class="cashier-inventory-add-page grid gap-8">
     <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -66,7 +51,7 @@ new #[Title('Add Material')] class extends Component
             <h1 class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">Add Material</h1>
             <p class="text-sm leading-6 text-[var(--ps-muted)]">Low Stock shows when the quantity reaches the low-stock level or below. Out of Stock shows at 0.</p>
         </div>
-        <a href="{{ route($inventoryRoutePrefix.'.inventory') }}" wire:navigate class="ps-button-ghost w-fit">Back to inventory</a>
+        <a href="{{ route('cashier.inventory') }}" wire:navigate class="ps-button-ghost w-fit">Back to inventory</a>
     </header>
 
     <form wire:submit="createMaterial" class="ps-glass grid gap-6 p-5 sm:p-8">
@@ -91,27 +76,10 @@ new #[Title('Add Material')] class extends Component
                 <input id="low_stock_level" type="number" min="0" step="0.001" wire:model="low_stock_level" class="ps-input" required>
                 @error('low_stock_level') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
             </div>
-            <fieldset class="grid gap-2 md:col-span-2">
-                <legend class="text-sm font-medium text-[var(--ps-text)]">Who uses this material?</legend>
-                <label class="flex items-center gap-2 text-sm text-[var(--ps-text)]">
-                    <flux:checkbox wire:model="allSpecialties" />
-                    <span>All specialties</span>
-                </label>
-                <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    @foreach (StaffSpecialtyType::cases() as $specialty)
-                        <label wire:key="new-inventory-specialty-{{ $specialty->value }}" class="flex items-center gap-2 text-sm text-[var(--ps-text)]">
-                            <flux:checkbox wire:model="specialties" value="{{ $specialty->value }}" :disabled="$allSpecialties" />
-                            <span>{{ $specialty->label() }}</span>
-                        </label>
-                    @endforeach
-                </div>
-                @error('specialties') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-                @error('specialties.*') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-            </fieldset>
         </div>
 
         <div class="flex justify-end gap-3 border-t border-[var(--ps-border)] pt-5">
-            <a href="{{ route($inventoryRoutePrefix.'.inventory') }}" wire:navigate class="ps-button-secondary">Cancel</a>
+            <a href="{{ route('cashier.inventory') }}" wire:navigate class="ps-button-secondary">Cancel</a>
             <button type="submit" class="ps-button-primary" wire:loading.attr="disabled" wire:target="createMaterial">Add material</button>
         </div>
     </form>

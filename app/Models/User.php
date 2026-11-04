@@ -14,6 +14,8 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
+use Laravel\Fortify\Contracts\PasskeyUser;
+use Laravel\Fortify\PasskeyAuthenticatable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 
 /**
@@ -34,10 +36,10 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  */
 #[Fillable(['name', 'email', 'phone', 'password', 'role'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
-class User extends Authenticatable implements MustVerifyEmail
+class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, MustVerifyEmailTrait, Notifiable, TwoFactorAuthenticatable;
+    use HasFactory, MustVerifyEmailTrait, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
 
     protected $attributes = [
         'is_active' => true,
@@ -101,8 +103,6 @@ class User extends Authenticatable implements MustVerifyEmail
 
     /**
      * Get the pending email change request for this user.
-     *
-     * @return HasOne<EmailChangeRequest, $this>
      */
     public function emailChangeRequest(): HasOne
     {
@@ -124,14 +124,14 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
-     * Specialties that do not report material use.
+     * Specialties that never need to report low stock (they only use a PC).
      */
     private const NO_STOCK_SPECIALTIES = ['graphic_designer'];
 
     /**
-     * Whether this staff member can report material use.
+     * Whether this staff member can see the inventory page and report low stock.
      */
-    public function canReportMaterialUse(): bool
+    public function canReportLowStock(): bool
     {
         if ($this->role !== 'staff') {
             return false;
@@ -141,11 +141,6 @@ class User extends Authenticatable implements MustVerifyEmail
 
         return $specialties->isEmpty()
             || $specialties->contains(fn (string $specialty): bool => ! in_array($specialty, self::NO_STOCK_SPECIALTIES, true));
-    }
-
-    public function canReportLowStock(): bool
-    {
-        return $this->canReportMaterialUse();
     }
 
     /**

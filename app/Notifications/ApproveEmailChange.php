@@ -39,7 +39,6 @@ class ApproveEmailChange extends Notification
             ->greeting("Hello {$this->userName},")
             ->line("A request was made to change your PrintSync email address to {$this->newEmail}.")
             ->line('Your current email address will stay in use until you approve this request and verify the new address.')
-            ->line('This approval link expires in one hour.')
             ->action('Approve email change', $this->url)
             ->line('If you did not request this change, you can ignore this email.');
     }

@@ -5,11 +5,18 @@ use App\Models\User;
 use App\Notifications\ApproveEmailChange;
 use App\Notifications\EmailAddressChanged;
 use App\Notifications\VerifyPendingEmail;
+use App\Rules\EmailDomainHasMailRoute;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
+
+beforeEach(function () {
+    app()->instance(EmailDomainHasMailRoute::class, new EmailDomainHasMailRoute(
+        static fn (string $domain, string $type): bool => $type === 'A',
+    ));
+});
 
 test('a verified email change requires approval of the old address and verification of the new one', function () {
     $user = User::factory()->create(['email' => 'current@example.com']);
@@ -27,6 +34,7 @@ test('a verified email change requires approval of the old address and verificat
     Livewire::test('pages::settings.profile')
         ->set('name', $user->name)
         ->set('email', 'replacement@example.com')
+        ->set('emailConfirmation', 'replacement@example.com')
         ->set('phone', $user->phone ?? '')
         ->call('updateProfileInformation')
         ->assertHasNoErrors();
@@ -102,6 +110,7 @@ test('an unverified current address does not need to approve its replacement', f
     $profile = Livewire::test('pages::settings.profile')
         ->set('name', $user->name)
         ->set('email', 'corrected@example.com')
+        ->set('emailConfirmation', 'corrected@example.com')
         ->set('phone', $user->phone ?? '')
         ->call('updateProfileInformation')
         ->assertHasNoErrors();
@@ -146,6 +155,7 @@ test('an invalid email-change token cannot update the account', function () {
     Livewire::test('pages::settings.profile')
         ->set('name', $user->name)
         ->set('email', 'replacement@example.com')
+        ->set('emailConfirmation', 'replacement@example.com')
         ->set('phone', $user->phone ?? '')
         ->call('updateProfileInformation')
         ->assertHasNoErrors();
@@ -183,6 +193,7 @@ test('expired email-change links cannot update the account', function () {
     Livewire::test('pages::settings.profile')
         ->set('name', $user->name)
         ->set('email', 'replacement@example.com')
+        ->set('emailConfirmation', 'replacement@example.com')
         ->set('phone', $user->phone ?? '')
         ->call('updateProfileInformation')
         ->assertHasNoErrors();
@@ -223,6 +234,7 @@ test('a pending new address cannot be claimed by a different account', function 
     Livewire::test('pages::settings.profile')
         ->set('name', $currentUser->name)
         ->set('email', 'claimed@example.com')
+        ->set('emailConfirmation', 'claimed@example.com')
         ->set('phone', $currentUser->phone ?? '')
         ->call('updateProfileInformation')
         ->assertHasNoErrors();
@@ -232,6 +244,7 @@ test('a pending new address cannot be claimed by a different account', function 
     Livewire::test('pages::settings.profile')
         ->set('name', 'Changed Name')
         ->set('email', 'claimed@example.com')
+        ->set('emailConfirmation', 'claimed@example.com')
         ->set('phone', $otherUser->phone ?? '')
         ->call('updateProfileInformation')
         ->assertHasErrors(['email']);

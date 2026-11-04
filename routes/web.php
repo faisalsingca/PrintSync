@@ -121,12 +121,6 @@ Route::middleware(['auth', 'active'])->group(function () {
 
         Route::livewire('cashier/low-stock-reports', 'pages::cashier.low-stock-reports')
             ->name('cashier.low-stock-reports');
-
-        Route::livewire('cashier/orders/{order}', 'pages::staff.order-details')
-            ->name('cashier.orders.show');
-
-        Route::livewire('cashier/routing', 'pages::owner.routing')
-            ->name('cashier.routing');
     });
 
     Route::middleware('role:owner')->group(function () {
@@ -148,14 +142,8 @@ Route::middleware(['auth', 'active'])->group(function () {
         Route::livewire('owner/specialties', 'pages::owner.specialties')
             ->name('owner.specialties');
 
-        Route::livewire('owner/inventory', 'pages::cashier.inventory')
+        Route::livewire('owner/inventory', 'pages::owner.inventory')
             ->name('owner.inventory');
-
-        Route::livewire('owner/inventory/create', 'pages::cashier.inventory-add')
-            ->name('owner.inventory.create');
-
-        Route::livewire('owner/inventory/archive', 'pages::cashier.inventory-archive')
-            ->name('owner.inventory.archive');
 
         Route::livewire('owner/low-stock', 'pages::owner.low-stock')
             ->name('owner.low-stock');

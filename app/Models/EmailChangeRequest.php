@@ -32,8 +32,6 @@ class EmailChangeRequest extends Model
 {
     /**
      * Get the user requesting the email change.
-     *
-     * @return BelongsTo<User, $this>
      */
     public function user(): BelongsTo
     {

@@ -49,7 +49,7 @@ new #[Title('Staff Dashboard')] class extends Component
         </div>
     </section>
 
-    @if (auth()->user()->canReportMaterialUse())
+    @if (auth()->user()->canReportLowStock())
     <a href="{{ route('staff.inventory') }}" wire:navigate class="ps-glass flex flex-wrap items-center justify-between gap-3 p-5 transition-colors hover:border-[var(--ps-border-strong)]">
         <span class="grid gap-1">
             <span class="font-medium text-[var(--ps-text)]">Running low on a material?</span>

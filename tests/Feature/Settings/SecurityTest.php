@@ -12,6 +12,9 @@ beforeEach(function () {
         'confirm' => true,
         'confirmPassword' => true,
     ]);
+    Features::passkeys([
+        'confirmPassword' => true,
+    ]);
 });
 
 test('security settings page can be rendered', function () {
@@ -23,8 +26,8 @@ test('security settings page can be rendered', function () {
 
     $response->assertOk();
 
-    $response->assertDontSee('Passkeys');
-    $response->assertDontSee('No passkeys yet');
+    $response->assertSee('Passkeys');
+    $response->assertSee('No passkeys yet');
     $response->assertSee('Two-factor authentication');
     $response->assertSee('Enable 2FA');
 });

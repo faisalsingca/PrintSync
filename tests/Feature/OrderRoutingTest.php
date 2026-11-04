@@ -128,10 +128,11 @@ test('declined task offers become available for reassignment to another eligible
         ->not->toContain($decliningStaff->id)
         ->toContain($replacementStaff->id);
 
-    $replacementAssignment = OrderAssignment::query()
-        ->where('order_id', $order->order_id)
-        ->where('is_active', true)
-        ->sole();
+    $replacementAssignment = $orderService->routeOrder(
+        $order,
+        $replacementStaff,
+        OrderServiceLine::GraphicDesign,
+    );
 
     $this->assertDatabaseHas('order_assignments', [
         'assignment_id' => $assignment->assignment_id,
@@ -140,8 +141,7 @@ test('declined task offers become available for reassignment to another eligible
     ]);
     $this->assertDatabaseHas('order_assignments', [
         'assignment_id' => $replacementAssignment->assignment_id,
-        'staff_id' => $replacementStaff->id,
-        'assignment_status' => OrderAssignment::STATUS_ACCEPTED,
+        'assignment_status' => OrderAssignment::STATUS_OFFERED,
         'is_active' => true,
     ]);
 });

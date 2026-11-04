@@ -37,7 +37,6 @@ class VerifyPendingEmail extends Notification
             ->subject('Verify your new PrintSync email address')
             ->greeting("Hello {$this->userName},")
             ->line('A request was made to use this address for a PrintSync account.')
-            ->line('This verification link expires in one hour.')
             ->action('Verify new email address', $this->url)
             ->line('The email address will not be changed until the required confirmations are complete.')
             ->line('If you did not request this change, you can ignore this email.');

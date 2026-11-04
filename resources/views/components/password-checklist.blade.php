@@ -1,4 +1,4 @@
-@props(['for' => 'password'])
+@props(['for' => 'password', 'confirm' => null])
 
 {{--
     Live password checklist. Updates while the person types, no page reload,
@@ -7,6 +7,7 @@
 <div
     x-data="{
         value: '',
+        confirmValue: '',
         rules: [
             { label: 'At least 12 characters', test: (v) => v.length >= 12 },
             { label: 'An uppercase letter (A-Z)', test: (v) => /[A-Z]/.test(v) },
@@ -33,6 +34,7 @@
                 el.addEventListener('input', () => { this[key] = el.value })
             }
             bind(@js($for), 'value')
+            bind(@js($confirm), 'confirmValue')
         },
     }"
     class="grid gap-3 rounded-xl border border-[var(--ps-border)] bg-[var(--ps-surface)] p-4"
@@ -73,5 +75,15 @@
             </li>
         </template>
 
+        @if ($confirm)
+            <li class="flex items-center gap-2"
+                :class="(confirmValue.length > 0 && confirmValue === value) ? 'text-emerald-500' : 'text-[var(--ps-muted)]'">
+                <span class="inline-flex size-5 shrink-0 items-center justify-center rounded-full text-xs font-bold"
+                      :class="(confirmValue.length > 0 && confirmValue === value) ? 'bg-emerald-500/15' : 'bg-red-500/15 text-red-500'"
+                      x-text="(confirmValue.length > 0 && confirmValue === value) ? '✓' : '✕'"
+                      aria-hidden="true"></span>
+                <span>Both passwords match</span>
+            </li>
+        @endif
     </ul>
 </div>

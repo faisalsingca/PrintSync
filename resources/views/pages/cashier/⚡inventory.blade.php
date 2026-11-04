@@ -1,9 +1,7 @@
 <?php
 
 use App\Models\Inventory;
-use App\Models\InventoryAdjustmentRequest;
 use App\Services\InventoryService;
-use App\StaffSpecialtyType;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
@@ -24,8 +22,6 @@ new #[Title('Cashier Inventory')] class extends Component
 
     public array $deductNote = [];
 
-    public Collection $adjustmentRequests;
-
     // Inline edit
     public ?int $editingId = null;
 
@@ -34,10 +30,6 @@ new #[Title('Cashier Inventory')] class extends Component
     public string $edit_unit = '';
 
     public string $edit_low_stock_level = '';
-
-    public array $edit_specialties = [];
-
-    public bool $editAllSpecialties = true;
 
     public string $successMessage = '';
 
@@ -128,9 +120,6 @@ new #[Title('Cashier Inventory')] class extends Component
         $this->edit_name = $item->material_name;
         $this->edit_unit = $item->unit;
         $this->edit_low_stock_level = rtrim(rtrim(number_format((float) $item->low_stock_level, 3, '.', ''), '0'), '.');
-        $specialties = $item->specialties()->pluck('specialty')->all();
-        $this->editAllSpecialties = in_array('all', $specialties, true);
-        $this->edit_specialties = $this->editAllSpecialties ? [] : $specialties;
         $this->resetValidation();
     }
 
@@ -151,11 +140,8 @@ new #[Title('Cashier Inventory')] class extends Component
             'edit_name' => ['required', 'string', 'max:150', Rule::unique('inventory', 'material_name')->ignore($item->inventory_id, 'inventory_id')],
             'edit_unit' => ['required', 'string', 'max:30'],
             'edit_low_stock_level' => ['required', 'numeric', 'min:0', 'max:999999999', 'decimal:0,3'],
-            'edit_specialties' => ['array', Rule::when(! $this->editAllSpecialties, ['min:1'])],
-            'edit_specialties.*' => ['string', 'distinct', Rule::enum(StaffSpecialtyType::class)],
         ], [
             'edit_name.unique' => 'Another material (maybe an archived one) already uses this name.',
-            'edit_specialties.min' => 'Select at least one specialty or choose all specialties.',
         ]);
 
         $inventoryService->updateMaterial($item, [
@@ -163,51 +149,9 @@ new #[Title('Cashier Inventory')] class extends Component
             'unit' => $validated['edit_unit'],
             'low_stock_level' => (string) $validated['edit_low_stock_level'],
         ], auth()->user());
-        $inventoryService->updateMaterialSpecialties(
-            $item,
-            $this->editAllSpecialties ? ['all'] : $validated['edit_specialties'],
-            auth()->user(),
-        );
 
         $this->successMessage = "{$validated['edit_name']} was updated.";
         $this->editingId = null;
-        $this->edit_specialties = [];
-        $this->editAllSpecialties = true;
-        $this->reload();
-    }
-
-    public function startAdjustmentReview(int $requestId, InventoryService $inventoryService): void
-    {
-        Gate::authorize('manage', Inventory::class);
-        $this->clearMessages();
-
-        $request = InventoryAdjustmentRequest::query()->findOrFail($requestId);
-        $inventoryService->startAdjustmentRequest($request, auth()->user());
-
-        $this->successMessage = "Usage report #{$request->request_id} is in progress.";
-        $this->reload();
-    }
-
-    public function completeAdjustment(int $requestId, InventoryService $inventoryService): void
-    {
-        Gate::authorize('manage', Inventory::class);
-        $this->clearMessages();
-
-        $request = InventoryAdjustmentRequest::query()->findOrFail($requestId);
-
-        try {
-            $inventoryService->completeAdjustmentRequest($request, auth()->user());
-        } catch (ValidationException $exception) {
-            $errors = $exception->errors();
-            $this->errorMessage = $errors['deduct'][0]
-                ?? $errors['inventory'][0]
-                ?? $errors['adjustment'][0]
-                ?? 'The usage report could not be completed.';
-
-            return;
-        }
-
-        $this->successMessage = "Usage report #{$request->request_id} was completed and stock was updated.";
         $this->reload();
     }
 
@@ -259,14 +203,11 @@ new #[Title('Cashier Inventory')] class extends Component
             ->when($search !== '', fn ($items) => $items
                 ->filter(fn (Inventory $item): bool => str_contains(mb_strtolower($item->material_name), $search))
                 ->values());
-        $this->adjustmentRequests = app(InventoryService::class)
-            ->getOpenAdjustmentRequests(auth()->user());
     }
 };
 ?>
 
 @php
-    $inventoryRoutePrefix = auth()->user()->role === 'owner' ? 'owner' : 'cashier';
     $fmt = fn ($number) => rtrim(rtrim(number_format((float) $number, 3, '.', ''), '0'), '.');
 @endphp
 
@@ -274,11 +215,11 @@ new #[Title('Cashier Inventory')] class extends Component
     <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div class="grid gap-1">
             <h1 class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">Inventory</h1>
-            <p class="text-sm leading-6 text-[var(--ps-muted)]">Manage materials, review staff usage reports, and record stock changes.</p>
+            <p class="text-sm leading-6 text-[var(--ps-muted)]">Add or deduct stock, edit details, or archive materials you no longer use.</p>
         </div>
         <div class="flex flex-wrap gap-2">
-            <a href="{{ route($inventoryRoutePrefix.'.inventory.create') }}" wire:navigate class="ps-button-primary">Add material</a>
-            <a href="{{ route($inventoryRoutePrefix.'.inventory.archive') }}" wire:navigate class="ps-button-secondary">Archived materials</a>
+            <a href="{{ route('cashier.inventory.create') }}" wire:navigate class="ps-button-primary">Add material</a>
+            <a href="{{ route('cashier.inventory.archive') }}" wire:navigate class="ps-button-secondary">Archived materials</a>
         </div>
     </header>
 
@@ -329,23 +270,6 @@ new #[Title('Cashier Inventory')] class extends Component
                                 <input id="edit_low_{{ $item->inventory_id }}" type="number" min="0" step="0.001" wire:model="edit_low_stock_level" class="ps-input" required>
                                 @error('edit_low_stock_level') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
                             </div>
-                            <fieldset class="grid gap-2 md:col-span-3">
-                                <legend class="text-sm font-medium text-[var(--ps-text)]">Who uses this material?</legend>
-                                <label class="flex items-center gap-2 text-sm text-[var(--ps-text)]">
-                                    <flux:checkbox wire:model="editAllSpecialties" />
-                                    <span>All specialties</span>
-                                </label>
-                                <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                                    @foreach (StaffSpecialtyType::cases() as $specialty)
-                                        <label wire:key="edit-inventory-specialty-{{ $item->inventory_id }}-{{ $specialty->value }}" class="flex items-center gap-2 text-sm text-[var(--ps-text)]">
-                                            <flux:checkbox wire:model="edit_specialties" value="{{ $specialty->value }}" :disabled="$editAllSpecialties" />
-                                            <span>{{ $specialty->label() }}</span>
-                                        </label>
-                                    @endforeach
-                                </div>
-                                @error('edit_specialties') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-                                @error('edit_specialties.*') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-                            </fieldset>
                             <div class="flex gap-2 md:pt-6">
                                 <button type="submit" class="ps-button-primary">Save</button>
                                 <button type="button" wire:click="cancelEdit" class="ps-button-secondary">Cancel</button>
@@ -385,47 +309,6 @@ new #[Title('Cashier Inventory')] class extends Component
                 <li class="px-5 py-8 text-sm text-[var(--ps-muted)]">
                     {{ $search !== '' ? 'No materials match your search.' : 'No materials yet. Use Add material to create the first one.' }}
                 </li>
-            @endforelse
-        </ul>
-    </section>
-
-    <section class="ps-glass overflow-hidden" aria-labelledby="usage-adjustments-heading">
-        <header class="grid gap-1 border-b border-[var(--ps-border)] px-5 py-5 sm:px-6">
-            <h2 id="usage-adjustments-heading" class="text-lg font-semibold text-[var(--ps-text)]">Staff Usage Reports</h2>
-            <p class="text-sm text-[var(--ps-muted)]">Start each report before completing it. Stock changes only when you complete an in-progress report.</p>
-        </header>
-        <ul class="divide-y divide-[var(--ps-border)]">
-            @forelse ($adjustmentRequests as $request)
-                <li wire:key="inventory-adjustment-{{ $request->request_id }}" class="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6">
-                    <div class="grid gap-1">
-                        <h3 class="font-medium text-[var(--ps-text)]">
-                            {{ $request->inventory->material_name }} · {{ $fmt($request->quantity) }} {{ $request->inventory->unit }}
-                        </h3>
-                        <p class="text-sm text-[var(--ps-muted)]">Reported by {{ $request->staff->name }} · {{ $request->created_at->format('M j, Y g:i A') }}</p>
-                        @if ($request->order_id)
-                            <p class="text-sm text-[var(--ps-muted)]">Order #{{ $request->order_id }}</p>
-                        @endif
-                        @if ($request->remarks)
-                            <p class="text-sm text-[var(--ps-muted)]">Remarks: {{ $request->remarks }}</p>
-                        @endif
-                        @if ($request->startedBy)
-                            <p class="text-xs text-[var(--ps-muted)]">In progress with {{ $request->startedBy->name }}</p>
-                        @endif
-                    </div>
-                    <div class="flex flex-wrap items-center gap-2">
-                        <x-status-badge
-                            :tone="$request->status === InventoryAdjustmentRequest::STATUS_IN_PROGRESS ? 'progress' : 'warning'"
-                            :label="$request->status === InventoryAdjustmentRequest::STATUS_IN_PROGRESS ? 'In Progress' : 'Pending Review'"
-                        />
-                        @if ($request->status === InventoryAdjustmentRequest::STATUS_PENDING)
-                            <button type="button" wire:click="startAdjustmentReview({{ $request->request_id }})" wire:loading.attr="disabled" class="ps-button-secondary">Mark in progress</button>
-                        @else
-                            <button type="button" wire:click="completeAdjustment({{ $request->request_id }})" wire:loading.attr="disabled" class="ps-button-primary">Complete and deduct</button>
-                        @endif
-                    </div>
-                </li>
-            @empty
-                <li class="px-5 py-8 text-sm text-[var(--ps-muted)]">No staff usage reports are waiting for review.</li>
             @endforelse
         </ul>
     </section>

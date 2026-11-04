@@ -46,14 +46,14 @@ new #[Title('Staff Orders')] class extends Component
             ->values();
     }
 
-    public function acceptTask(int $assignmentId, OrderService $orderService, AuditLogService $auditLog): void
+    public function acceptTask(int $assignmentId, OrderService $orderService): void
     {
-        $this->respondToTask($assignmentId, true, $orderService, $auditLog);
+        $this->respondToTask($assignmentId, true, $orderService);
     }
 
-    public function declineTask(int $assignmentId, OrderService $orderService, AuditLogService $auditLog): void
+    public function declineTask(int $assignmentId, OrderService $orderService): void
     {
-        $this->respondToTask($assignmentId, false, $orderService, $auditLog);
+        $this->respondToTask($assignmentId, false, $orderService);
     }
 
     private function respondToTask(int $assignmentId, bool $accept, OrderService $orderService, AuditLogService $auditLog): void
@@ -150,10 +150,6 @@ new #[Title('Staff Orders')] class extends Component
         <ul class="divide-y divide-[var(--ps-border)]">
             @forelse ($this->filteredOrders as $order)
                 <li wire:key="staff-order-{{ $order->order_id }}">
-                    @php
-                        $primaryAssignment = $order->takeovers->first()?->assignment ?? $order->assignments->first();
-                        $takeover = $order->takeovers->first();
-                    @endphp
                     <a
                         href="{{ route('staff.orders.show', $order) }}"
                         wire:navigate
@@ -173,12 +169,6 @@ new #[Title('Staff Orders')] class extends Component
                                     <span aria-hidden="true">·</span>
                                     <span>{{ $order->customerDisplayName() }}</span>
                                 </p>
-                                @if ($primaryAssignment)
-                                    <p class="text-xs text-[var(--ps-muted)]">Assigned to {{ $primaryAssignment->staff->name }}</p>
-                                @endif
-                                @if ($takeover)
-                                    <p class="text-xs text-[var(--ps-muted)]">Covered by {{ $takeover->coveringStaff->name }}: {{ $takeover->reason }}</p>
-                                @endif
                             </div>
                         </div>
                         <div class="flex items-center justify-between gap-3 sm:justify-end">

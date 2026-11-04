@@ -131,11 +131,11 @@ test('owner monitoring is a hub and each module has its own page', function () {
 
     $this->get(route('owner.inventory'))
         ->assertOk()
-        ->assertSeeText('Inventory')
-        ->assertSeeText('Alerted cardstock')
-        ->assertSeeText('0.25 ream')
-        ->assertSeeText('Unalerted paper')
-        ->assertSeeText('0.001 ream');
+        ->assertSee('Inventory Materials')
+        ->assertSee('Alerted cardstock')
+        ->assertSee('0.25 ream')
+        ->assertSee('Unalerted paper')
+        ->assertSee('0.001 ream');
 
     $this->get(route('owner.low-stock'))
         ->assertOk()

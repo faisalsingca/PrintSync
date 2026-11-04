@@ -1,16 +1,10 @@
 <?php
 
 use App\Models\Order;
-use App\Models\OrderTakeover;
-use App\Models\Inventory;
-use App\Models\InventoryAdjustmentRequest;
-use App\Models\User;
 use App\OrderStatus;
 use App\Services\AuditLogService;
-use App\Services\InventoryService;
 use App\Services\OrderService;
 use App\Services\PaymentService;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -23,114 +17,22 @@ new #[Title('Order Details')] class extends Component
 
     public string $statusMessage = '';
 
-    public string $takeoverReason = '';
-
     public ?string $paymentStatus = null;
 
     public bool $paymentCleared = false;
-
-    public Collection $orderMaterials;
-
-    public Collection $materialUseReports;
-
-    public array $materialQuantities = [];
-
-    public array $materialRemarks = [];
 
     public function mount(Order $order, PaymentService $paymentService): void
     {
         Gate::authorize('view', $order);
 
-        $this->order = $order->load([
-            'customer',
-            'assignments' => fn ($query) => $query->with('staff')->orderByDesc('assignment_id'),
-            'takeovers' => fn ($query) => $query->with(['coveringStaff', 'assignment.staff'])->orderByDesc('takeover_id'),
-        ]);
+        $this->order = $order->load('customer');
         $this->refreshPayment($paymentService);
-        $this->refreshMaterialUse();
     }
 
     public function checkPayment(PaymentService $paymentService): void
     {
-        $this->order = Order::query()
-            ->with([
-                'customer',
-                'assignments' => fn ($query) => $query->with('staff')->orderByDesc('assignment_id'),
-                'takeovers' => fn ($query) => $query->with(['coveringStaff', 'assignment.staff'])->orderByDesc('takeover_id'),
-            ])
-            ->findOrFail($this->order->order_id);
+        $this->order = Order::query()->with('customer')->findOrFail($this->order->order_id);
         $this->refreshPayment($paymentService);
-    }
-
-    public function takeOver(OrderService $orderService, AuditLogService $auditLog): void
-    {
-        $order = Order::query()->findOrFail($this->order->order_id);
-        Gate::authorize('takeOver', $order);
-        $staff = auth()->user();
-        abort_unless($staff instanceof User, 403);
-
-        $validated = $this->validate([
-            'takeoverReason' => ['required', 'string', 'max:500'],
-        ], [
-            'takeoverReason.required' => 'Explain why you are taking over this order.',
-        ]);
-
-        $takeover = $orderService->takeOverOrder($order, $staff, $validated['takeoverReason']);
-        $auditLog->record(
-            $staff,
-            'staff.order_taken_over',
-            "Took over order #{$order->order_id} from {$takeover->assignment->staff->name}: {$takeover->reason}",
-            OrderTakeover::class,
-            $takeover->takeover_id,
-            "Order #{$order->order_id}",
-            [
-                'assigned_staff_id' => $takeover->assignment->staff_id,
-                'covering_staff_id' => $takeover->covering_staff_id,
-                'reason' => $takeover->reason,
-            ],
-        );
-
-        $this->order = Order::query()
-            ->with([
-                'customer',
-                'assignments' => fn ($query) => $query->with('staff')->orderByDesc('assignment_id'),
-                'takeovers' => fn ($query) => $query->with(['coveringStaff', 'assignment.staff'])->orderByDesc('takeover_id'),
-            ])
-            ->findOrFail($order->order_id);
-        $this->takeoverReason = '';
-        $this->statusMessage = "You are now covering order #{$order->order_id}. The original assignee remains recorded.";
-        $this->refreshMaterialUse();
-    }
-
-    public function reportMaterialUse(int $inventoryId, InventoryService $inventoryService): void
-    {
-        $order = Order::query()->findOrFail($this->order->order_id);
-        Gate::authorize('updateProductionStatus', $order);
-        abort_unless($order->status === OrderStatus::InProgress->value, 403);
-
-        $inventory = Inventory::query()->findOrFail($inventoryId);
-        Gate::authorize('createAdjustmentRequest', $inventory);
-
-        $this->validate([
-            "materialQuantities.$inventoryId" => ['required', 'numeric', 'gt:0', 'max:999999999', 'decimal:0,3'],
-            "materialRemarks.$inventoryId" => ['nullable', 'string', 'max:500'],
-        ], [], [
-            "materialQuantities.$inventoryId" => 'quantity used',
-            "materialRemarks.$inventoryId" => 'remarks',
-        ]);
-
-        $remarks = trim((string) ($this->materialRemarks[$inventoryId] ?? ''));
-        $inventoryService->createAdjustmentRequest(
-            $inventory,
-            auth()->user(),
-            (string) $this->materialQuantities[$inventoryId],
-            $remarks === '' ? null : $remarks,
-            $order,
-        );
-
-        $this->statusMessage = "{$inventory->material_name} usage was reported for order #{$order->order_id}.";
-        unset($this->materialQuantities[$inventoryId], $this->materialRemarks[$inventoryId]);
-        $this->refreshMaterialUse();
     }
 
     public function updateProductionStatus(string $status, OrderService $orderService, AuditLogService $auditLog): void
@@ -147,11 +49,7 @@ new #[Title('Order Details')] class extends Component
             $order,
             auth()->user(),
             OrderStatus::from($status),
-        )->load([
-            'customer',
-            'assignments' => fn ($query) => $query->with('staff')->orderByDesc('assignment_id'),
-            'takeovers' => fn ($query) => $query->with(['coveringStaff', 'assignment.staff'])->orderByDesc('takeover_id'),
-        ]);
+        )->load('customer');
         $auditLog->record(
             auth()->user(),
             'staff.order_status_updated',
@@ -163,33 +61,12 @@ new #[Title('Order Details')] class extends Component
         );
         $this->statusMessage = 'Order status updated to '.OrderStatus::from($status)->label().'.';
         $this->refreshPayment(app(PaymentService::class));
-        $this->refreshMaterialUse();
     }
 
     private function refreshPayment(PaymentService $paymentService): void
     {
         $this->paymentStatus = $paymentService->getPaymentStatus($this->order);
         $this->paymentCleared = $paymentService->isReadyForProduction($this->order);
-    }
-
-    private function refreshMaterialUse(): void
-    {
-        $staff = auth()->user();
-
-        if (
-            $this->order->status !== OrderStatus::InProgress->value
-            || ! $staff->canReportMaterialUse()
-            || ! Gate::allows('updateProductionStatus', $this->order)
-        ) {
-            $this->orderMaterials = new Collection;
-            $this->materialUseReports = new Collection;
-
-            return;
-        }
-
-        $inventoryService = app(InventoryService::class);
-        $this->orderMaterials = $inventoryService->getStaffInventoryList($staff);
-        $this->materialUseReports = $inventoryService->getOrderAdjustmentRequests($this->order);
     }
 };
 ?>
@@ -203,9 +80,7 @@ new #[Title('Order Details')] class extends Component
 
         @if (auth()->user()->role === 'owner')
             <a href="{{ route('owner.monitoring') }}" wire:navigate class="ps-button-ghost w-fit">Back to monitoring</a>
-            @elseif (auth()->user()->role === 'cashier')
-                <a href="{{ route('cashier.routing') }}" wire:navigate class="ps-button-ghost w-fit">Back to order routing</a>
-            @else
+        @else
             <a href="{{ route('staff.orders') }}" wire:navigate class="ps-button-ghost w-fit">Back to assigned orders</a>
         @endif
     </header>
@@ -224,39 +99,6 @@ new #[Title('Order Details')] class extends Component
             </div>
             <x-status-badge :tone="OrderStatus::toneFor($order->status)" :label="OrderStatus::labelFor($order->status)" />
         </div>
-
-        @php
-            $primaryAssignment = $order->takeovers->first()?->assignment ?? $order->assignments->first();
-            $takeover = $order->takeovers->first();
-        @endphp
-        <section class="grid gap-2 border-b border-[var(--ps-border)] pb-5" aria-label="Order assignment">
-            @if ($primaryAssignment)
-                <p class="text-sm text-[var(--ps-muted)]">Assigned to <span class="font-medium text-[var(--ps-text)]">{{ $primaryAssignment->staff->name }}</span></p>
-            @else
-                <p class="text-sm text-[var(--ps-muted)]">No primary staff assignment recorded.</p>
-            @endif
-            @if ($takeover)
-                <p class="text-sm text-[var(--ps-muted)]">
-                    Covered by <span class="font-medium text-[var(--ps-text)]">{{ $takeover->coveringStaff->name }}</span>:
-                    {{ $takeover->reason }}
-                </p>
-            @endif
-        </section>
-
-        @can('takeOver', $order)
-            <section class="grid gap-3 border-b border-[var(--ps-border)] pb-5" aria-labelledby="order-takeover-heading">
-                <div class="grid gap-1">
-                    <h2 id="order-takeover-heading" class="font-semibold text-[var(--ps-text)]">Take over this order</h2>
-                    <p class="text-sm text-[var(--ps-muted)]">The original assignee stays recorded. Explain why you are covering, for example if they are unavailable.</p>
-                </div>
-                <label class="grid gap-1 text-sm font-medium text-[var(--ps-text)]" for="takeover-reason">
-                    Reason for takeover
-                    <textarea id="takeover-reason" wire:model="takeoverReason" class="ps-input min-h-20" maxlength="500" required></textarea>
-                </label>
-                @error('takeoverReason') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-                <button type="button" wire:click="takeOver" wire:loading.attr="disabled" class="ps-button-secondary w-fit">Take over order</button>
-            </section>
-        @endcan
 
         <dl class="grid gap-5 sm:grid-cols-2">
             <div class="grid gap-1">
@@ -344,61 +186,5 @@ new #[Title('Order Details')] class extends Component
                 @endif
             </div>
         </section>
-    @endif
-
-    @if ($order->status === OrderStatus::InProgress->value && auth()->user()->canReportMaterialUse())
-        @can('updateProductionStatus', $order)
-        @php
-            $fmtMaterialQuantity = fn ($number) => rtrim(rtrim(number_format((float) $number, 3, '.', ''), '0'), '.');
-        @endphp
-        <section class="ps-glass grid gap-4 p-5 sm:p-8" aria-labelledby="order-material-use-heading">
-            <div class="grid gap-1">
-                <h2 id="order-material-use-heading" class="text-xl font-semibold text-[var(--ps-text)]">Materials used for this order</h2>
-                <p class="text-sm text-[var(--ps-muted)]">Report the quantity used for this order. The owner or cashier will review it; stock changes only after review is completed.</p>
-            </div>
-
-            @forelse ($orderMaterials as $material)
-                @php
-                    $usageReport = $materialUseReports->firstWhere('inventory_id', $material->inventory_id);
-                    $quantityField = 'materialQuantities.'.$material->inventory_id;
-                @endphp
-                <div wire:key="order-material-{{ $order->order_id }}-{{ $material->inventory_id }}" class="grid gap-3 border-t border-[var(--ps-border)] pt-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
-                    <div class="grid gap-1">
-                        <h3 class="font-medium text-[var(--ps-text)]">{{ $material->material_name }}</h3>
-                        <p class="text-sm text-[var(--ps-muted)]">
-                            Available: {{ $fmtMaterialQuantity($material->quantity) }} {{ $material->unit }}
-                            · {{ $material->stockStatusLabel() }}
-                        </p>
-                        @if ($usageReport)
-                            <p class="text-sm text-[var(--ps-muted)]">
-                                Reported: {{ $fmtMaterialQuantity($usageReport->quantity) }} {{ $material->unit }}
-                                · {{ match ($usageReport->status) {
-                                    InventoryAdjustmentRequest::STATUS_PENDING => 'Pending Review',
-                                    InventoryAdjustmentRequest::STATUS_IN_PROGRESS => 'In Progress',
-                                    InventoryAdjustmentRequest::STATUS_COMPLETED => 'Completed',
-                                    default => 'Unknown',
-                                } }}
-                            </p>
-                            @if ($usageReport->remarks)
-                                <p class="text-sm text-[var(--ps-muted)]">Remarks: {{ $usageReport->remarks }}</p>
-                            @endif
-                        @endif
-                    </div>
-
-                    @unless ($usageReport)
-                        <div class="grid gap-2 sm:min-w-[26rem] sm:grid-cols-[minmax(8rem,0.35fr)_minmax(0,1fr)_auto]">
-                            <input type="number" min="0.001" step="0.001" inputmode="decimal" wire:model="materialQuantities.{{ $material->inventory_id }}" class="ps-input" placeholder="Quantity used" aria-label="Quantity of {{ $material->material_name }} used">
-                            <input type="text" wire:model="materialRemarks.{{ $material->inventory_id }}" class="ps-input" maxlength="500" placeholder="Remarks (optional)" aria-label="Usage remarks for {{ $material->material_name }}">
-                            <button type="button" wire:click="reportMaterialUse({{ $material->inventory_id }})" wire:loading.attr="disabled" class="ps-button-secondary shrink-0">Report use</button>
-                        </div>
-                        @error($quantityField) <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-                        @error("materialRemarks.{$material->inventory_id}") <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-                    @endunless
-                </div>
-            @empty
-                <p class="border-t border-[var(--ps-border)] pt-4 text-sm text-[var(--ps-muted)]">No materials are assigned to your specialty.</p>
-            @endforelse
-        </section>
-        @endcan
     @endif
 </div>

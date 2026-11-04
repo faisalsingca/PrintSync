@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\Inventory;
-use App\Models\InventorySpecialty;
 use App\Models\Order;
 use App\Models\Payment;
 use App\Models\User;
@@ -83,15 +82,11 @@ test('customer orders page shows only the authenticated customer orders', functi
 
 test('staff inventory page retrieves inventory through InventoryService', function () {
     $staff = User::factory()->create(['role' => 'staff']);
-    $inventory = Inventory::create([
+    Inventory::create([
         'material_name' => 'Staff visible paper',
         'quantity' => '12.000',
         'unit' => 'ream',
         'status' => 'available',
-    ]);
-    InventorySpecialty::create([
-        'inventory_id' => $inventory->inventory_id,
-        'specialty' => 'all',
     ]);
 
     $this->actingAs($staff)
@@ -162,8 +157,8 @@ test('owner module pages display saved order inventory and payment information',
 
     $this->get(route('owner.inventory'))
         ->assertOk()
-        ->assertSeeText('Monitoring inventory')
-        ->assertSeeText('4 ream');
+        ->assertSee('Monitoring inventory')
+        ->assertSee('4 ream');
 
     $this->get(route('owner.payments'))
         ->assertOk()

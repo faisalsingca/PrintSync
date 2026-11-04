@@ -52,22 +52,6 @@ class Order extends Model
     }
 
     /**
-     * Get the recorded staff takeovers for this order.
-     */
-    public function takeovers(): HasMany
-    {
-        return $this->hasMany(OrderTakeover::class, 'order_id', 'order_id');
-    }
-
-    /**
-     * Get material usage reports for this order.
-     */
-    public function inventoryAdjustmentRequests(): HasMany
-    {
-        return $this->hasMany(InventoryAdjustmentRequest::class, 'order_id', 'order_id');
-    }
-
-    /**
      * Get the payments recorded for the order.
      */
     public function payments(): HasMany

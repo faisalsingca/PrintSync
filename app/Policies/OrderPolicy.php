@@ -32,7 +32,15 @@ class OrderPolicy
     {
         return match ($user->role) {
             'customer' => $order->customer_id === $user->id,
-            'staff' => app(OrderService::class)->staffCanServe($user, $order),
+            'staff' => app(OrderService::class)->staffCanServe($user, $order)
+                || $order->assignments()
+                    ->where('staff_id', $user->id)
+                    ->whereIn('assignment_status', [
+                        OrderAssignment::STATUS_OFFERED,
+                        OrderAssignment::STATUS_ACCEPTED,
+                    ])
+                    ->where('is_active', true)
+                    ->exists(),
             'cashier', 'owner' => true,
             default => false,
         };
@@ -45,7 +53,15 @@ class OrderPolicy
     {
         return match ($user->role) {
             'customer' => $order->customer_id === $user->id,
-            'staff' => app(OrderService::class)->staffCanServe($user, $order),
+            'staff' => app(OrderService::class)->staffCanServe($user, $order)
+                || $order->assignments()
+                    ->where('staff_id', $user->id)
+                    ->whereIn('assignment_status', [
+                        OrderAssignment::STATUS_OFFERED,
+                        OrderAssignment::STATUS_ACCEPTED,
+                    ])
+                    ->where('is_active', true)
+                    ->exists(),
             'owner' => true,
             default => false,
         };
@@ -57,7 +73,12 @@ class OrderPolicy
     public function updateProductionStatus(User $user, Order $order): bool
     {
         return $user->role === 'staff'
-            && app(OrderService::class)->canUpdateOrder($user, $order);
+            && (app(OrderService::class)->staffCanServe($user, $order)
+                || $order->assignments()
+                    ->where('staff_id', $user->id)
+                    ->where('assignment_status', OrderAssignment::STATUS_ACCEPTED)
+                    ->where('is_active', true)
+                    ->exists());
     }
 
     /**
@@ -84,16 +105,6 @@ class OrderPolicy
         return $user->role === 'owner';
     }
 
-    public function viewRoutingOverview(User $user): bool
-    {
-        return in_array($user->role, ['owner', 'cashier'], true);
-    }
-
-    public function takeOver(User $user, Order $order): bool
-    {
-        return app(OrderService::class)->canTakeOverOrder($user, $order);
-    }
-
     /**
      * Determine whether the user may respond to this active assignment offer.
      */
@@ -103,7 +114,6 @@ class OrderPolicy
             && $assignment->order_id === $order->order_id
             && $assignment->staff_id === $user->id
             && $assignment->assignment_status === OrderAssignment::STATUS_OFFERED
-            && $assignment->is_active
-            && app(OrderService::class)->staffCanServe($user, $order);
+            && $assignment->is_active;
     }
 }

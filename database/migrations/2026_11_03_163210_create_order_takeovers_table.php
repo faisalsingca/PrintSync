@@ -12,17 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('order_takeovers', function (Blueprint $table) {
-            $table->id('takeover_id');
-            $table->foreignId('order_id')
-                ->constrained('orders', 'order_id')
-                ->restrictOnDelete()
-                ->unique();
-            $table->foreignId('assignment_id')
-                ->constrained('order_assignments', 'assignment_id')
-                ->restrictOnDelete();
-            $table->foreignId('covering_staff_id')->constrained('users')->restrictOnDelete();
-            $table->text('reason');
-            $table->timestamp('taken_over_at')->useCurrent();
+            $table->id();
             $table->timestamps();
         });
     }

@@ -12,7 +12,6 @@ use Illuminate\Support\Carbon;
  * @property string $name
  * @property string $email
  * @property string $role
- * @property array<string>|null $specialties
  * @property int|null $created_by
  * @property string $token_hash
  * @property Carbon $expires_at
@@ -20,7 +19,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'email', 'role', 'specialties', 'created_by', 'token_hash', 'expires_at', 'email_sent_at'])]
+#[Fillable(['name', 'email', 'role', 'created_by', 'token_hash', 'expires_at', 'email_sent_at'])]
 class StaffInvitation extends Model
 {
     /**
@@ -39,7 +38,6 @@ class StaffInvitation extends Model
     protected function casts(): array
     {
         return [
-            'specialties' => 'array',
             'expires_at' => 'datetime',
             'email_sent_at' => 'datetime',
         ];

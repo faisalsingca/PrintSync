@@ -2,9 +2,16 @@
 
 use App\Models\User;
 use App\Notifications\ApproveEmailChange;
+use App\Rules\EmailDomainHasMailRoute;
 use App\Notifications\VerifyPendingEmail;
 use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
+
+beforeEach(function () {
+    app()->instance(EmailDomainHasMailRoute::class, new EmailDomainHasMailRoute(
+        static fn (string $domain, string $type): bool => $type === 'A',
+    ));
+});
 
 test('profile page is displayed', function () {
     $this->actingAs($user = User::factory()->create());
@@ -51,6 +58,36 @@ test('profile information can be updated', function () {
     Notification::assertSentOnDemand(VerifyPendingEmail::class, function ($notification, array $channels, $notifiable): bool {
         return $notifiable->routes['mail'] === 'test@example.com';
     });
+});
+
+test('email changes with no MX or A DNS records are rejected without sending notifications', function () {
+    $user = User::factory()->create(['email' => 'current@example.com']);
+    $dnsLookups = [];
+
+    app()->instance(EmailDomainHasMailRoute::class, new EmailDomainHasMailRoute(
+        static function (string $domain, string $type) use (&$dnsLookups): bool {
+            $dnsLookups[] = [$domain, $type];
+
+            return false;
+        },
+    ));
+    Notification::fake();
+
+    Livewire::actingAs($user)
+        ->test('pages::settings.profile')
+        ->set('email', 'user@gmial.con')
+        ->set('emailConfirmation', 'user@gmial.con')
+        ->call('updateProfileInformation')
+        ->assertHasErrors(['email'])
+        ->assertSee('This email address is not valid. Please check for typos.');
+
+    expect($user->fresh()->email)->toBe('current@example.com');
+    expect($dnsLookups)->toBe([
+        ['gmial.con', 'MX'],
+        ['gmial.con', 'A'],
+    ]);
+    $this->assertDatabaseMissing('email_change_requests', ['user_id' => $user->id]);
+    Notification::assertNothingSent();
 });
 
 test('email changes are rejected until the new address is confirmed in the form', function (?string $confirmation, string $rule, string $message) {

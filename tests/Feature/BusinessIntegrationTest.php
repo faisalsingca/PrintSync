@@ -74,26 +74,22 @@ test('a customer can create and view their own order but not another customer or
         ->and(Gate::forUser($anotherCustomer)->allows('view', $order))->toBeFalse();
 });
 
-test('eligible staff can view service-line orders but only the assignee can update them', function () {
+test('order assignments connect the staff member and authorize only assigned staff', function () {
     $customer = User::factory()->create(['role' => 'customer']);
     $staff = User::factory()->create(['role' => 'staff']);
     $anotherStaff = User::factory()->create(['role' => 'staff']);
     $order = createBusinessIntegrationOrder($customer);
-
-    foreach ([$staff, $anotherStaff] as $eligibleStaff) {
-        StaffSpecialty::create([
-            'staff_id' => $eligibleStaff->id,
-            'specialty' => 'graphic_designer',
-        ]);
-    }
+    StaffSpecialty::create([
+        'staff_id' => $staff->id,
+        'specialty' => 'graphic_designer',
+    ]);
 
     $assignment = (new OrderService)->assignOrderToStaff($order, $staff);
 
     expect($order->assignments()->first()->is($assignment))->toBeTrue()
         ->and($assignment->staff->is($staff))->toBeTrue()
         ->and(Gate::forUser($staff)->allows('view', $order))->toBeTrue()
-        ->and(Gate::forUser($anotherStaff)->allows('view', $order))->toBeTrue()
-        ->and(Gate::forUser($anotherStaff)->allows('updateProductionStatus', $order))->toBeFalse();
+        ->and(Gate::forUser($anotherStaff)->allows('view', $order))->toBeFalse();
 });
 
 test('validated payment details are recorded and available through the order', function () {

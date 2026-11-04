@@ -1,6 +1,7 @@
 <?php
 
 use App\Concerns\ProfileValidationRules;
+use App\Rules\EmailDomainHasMailRoute;
 use App\Services\EmailChangeService;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Flux\Flux;
@@ -40,11 +41,14 @@ new #[Title('Profile settings')] class extends Component {
             && $this->email !== $pendingEmailChange?->new_email;
 
         $rules = $this->profileRules($user->id);
-        $validationMessages = [];
+        $validationMessages = [
+            'email.email' => __('This email address is not valid. Please check for typos.'),
+        ];
 
         if ($requiresEmailConfirmation) {
+            $rules['email'][] = app(EmailDomainHasMailRoute::class);
             $rules['emailConfirmation'] = ['required', 'email', 'same:email'];
-            $validationMessages = [
+            $validationMessages += [
                 'emailConfirmation.required' => __('Please confirm the new email address.'),
                 'emailConfirmation.same' => __('The email addresses do not match.'),
             ];
@@ -144,6 +148,7 @@ new #[Title('Profile settings')] class extends Component {
                 </flux:text>
 
                 <flux:input wire:model.live="email" :label="__('Email')" type="email" required autocomplete="email" />
+                @error('email') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
 
                 @if ($email !== Auth::user()->email && $email !== $pendingEmailChange?->new_email)
                     <flux:input

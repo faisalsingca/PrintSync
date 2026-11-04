@@ -5,9 +5,7 @@ use App\Models\StaffInvitation;
 use App\Models\User;
 use App\Notifications\StaffAccountInvitation;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\URL;
-use Livewire\Livewire;
 
 test('invitee can accept the signed invitation and go to the correct dashboard', function (string $role, string $dashboardRoute) {
     $superAdmin = User::factory()->create(['role' => 'super_admin']);
@@ -16,7 +14,6 @@ test('invitee can accept the signed invitation and go to the correct dashboard',
         'name' => 'Jamie Printer',
         'email' => 'jamie@example.com',
         'role' => $role,
-        'specialties' => $role === 'staff' ? ['sewer'] : null,
         'created_by' => $superAdmin->id,
         'token_hash' => hash('sha256', $token),
         'expires_at' => now()->addDays(7),
@@ -56,13 +53,6 @@ test('invitee can accept the signed invitation and go to the correct dashboard',
         ->and($user->is_active)->toBeTrue()
         ->and(Hash::check('SecurePass#1234', $user->password))->toBeTrue();
 
-    if ($role === 'staff') {
-        $this->assertDatabaseHas('staff_specialties', [
-            'staff_id' => $user->id,
-            'specialty' => 'sewer',
-        ]);
-    }
-
     $this->post(route('staff-invitations.accept', ['token' => $token]), [
         'password' => 'SecurePass#1234',
         'password_confirmation' => 'SecurePass#1234',
@@ -74,30 +64,6 @@ test('invitee can accept the signed invitation and go to the correct dashboard',
     'staff' => ['staff', 'staff.dashboard'],
     'cashier' => ['cashier', 'cashier.dashboard'],
 ]);
-
-test('super admins must choose at least one specialty when inviting staff', function () {
-    $superAdmin = User::factory()->create(['role' => 'super_admin']);
-    Notification::fake();
-    $this->actingAs($superAdmin);
-
-    $component = Livewire::test('pages::super-admin.staff-accounts')
-        ->call('openCreateStaffModal')
-        ->set('name', 'Jamie Printer')
-        ->set('email', 'jamie@example.com')
-        ->set('role', 'staff')
-        ->call('createStaffAccount')
-        ->assertHasErrors(['specialties' => 'min']);
-
-    $this->assertDatabaseCount('staff_invitations', 0);
-
-    $component->set('specialties', ['sewer'])
-        ->call('createStaffAccount')
-        ->assertHasNoErrors();
-
-    $invitation = StaffInvitation::query()->sole();
-
-    expect($invitation->specialties)->toBe(['sewer']);
-});
 
 test('expired invitation cannot create an employee account', function () {
     $token = str_repeat('c', 64);

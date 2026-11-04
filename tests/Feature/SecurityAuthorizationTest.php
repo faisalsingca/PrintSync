@@ -8,7 +8,6 @@ use App\Models\Inventory;
 use App\Models\Order;
 use App\Models\OrderAssignment;
 use App\Models\Payment;
-use App\Models\StaffSpecialty;
 use App\Models\User;
 use App\Services\InventoryService;
 use App\Services\OrderService;
@@ -57,12 +56,7 @@ test('request validation rejects client-controlled ownership and alert fields', 
         'customer_id' => $customer->id,
         'order_date' => now(),
         'order_type' => 'poster',
-        'service_line' => 'graphic_design',
         'quantity' => 1,
-    ]);
-    StaffSpecialty::create([
-        'staff_id' => $staff->id,
-        'specialty' => 'graphic_designer',
     ]);
     $inventory = Inventory::create([
         'material_name' => 'Security test paper',
@@ -219,16 +213,7 @@ test('policies preserve role boundaries for real order inventory and payment rec
         'customer_id' => $customer->id,
         'order_date' => now(),
         'order_type' => 'poster',
-        'service_line' => 'graphic_design',
         'quantity' => 1,
-    ]);
-    StaffSpecialty::create([
-        'staff_id' => $staff->id,
-        'specialty' => 'graphic_designer',
-    ]);
-    StaffSpecialty::create([
-        'staff_id' => $staff->id,
-        'specialty' => 'inventory_clerk',
     ]);
     OrderAssignment::create([
         'order_id' => $order->order_id,
@@ -252,7 +237,7 @@ test('policies preserve role boundaries for real order inventory and payment rec
         ->and(Gate::forUser($customer)->allows('viewAny', Inventory::class))->toBeFalse()
         ->and(Gate::forUser($cashier)->allows('viewAny', Inventory::class))->toBeTrue()
         ->and(Gate::forUser($staff)->allows('addStock', Inventory::class))->toBeFalse()
-        ->and(Gate::forUser($owner)->allows('addStock', Inventory::class))->toBeTrue()
+        ->and(Gate::forUser($owner)->allows('addStock', Inventory::class))->toBeFalse()
         ->and(Gate::forUser($customer)->allows('addStock', Inventory::class))->toBeFalse()
         ->and(Gate::forUser($cashier)->allows('addStock', Inventory::class))->toBeTrue()
         ->and(Gate::forUser($staff)->allows('createLowStockAlert', Inventory::class))->toBeTrue()

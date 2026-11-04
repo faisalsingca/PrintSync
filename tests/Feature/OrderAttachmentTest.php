@@ -2,7 +2,6 @@
 
 use App\Models\Order;
 use App\Models\OrderAssignment;
-use App\Models\StaffSpecialty;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -17,7 +16,6 @@ function createOrderAttachmentTestOrder(User $customer, string $fileName = 'cust
         'customer_id' => $customer->id,
         'order_date' => now(),
         'order_type' => 'Business cards',
-        'service_line' => 'graphic_design',
         'design_file' => $path,
         'quantity' => 100,
         'status' => 'pending',
@@ -63,10 +61,6 @@ test('assigned staff see the design as an inline preview and cannot download it'
     $customer = User::factory()->create(['role' => 'customer']);
     $order = createOrderAttachmentTestOrder($customer);
     $staff = User::factory()->create(['role' => 'staff']);
-    StaffSpecialty::create([
-        'staff_id' => $staff->id,
-        'specialty' => 'graphic_designer',
-    ]);
     OrderAssignment::create([
         'order_id' => $order->order_id,
         'staff_id' => $staff->id,
@@ -115,10 +109,6 @@ test('staff who declined an order cannot access its design file', function () {
     $customer = User::factory()->create(['role' => 'customer']);
     $staff = User::factory()->create(['role' => 'staff']);
     $order = createOrderAttachmentTestOrder($customer);
-    StaffSpecialty::create([
-        'staff_id' => $staff->id,
-        'specialty' => 'graphic_designer',
-    ]);
     OrderAssignment::create([
         'order_id' => $order->order_id,
         'staff_id' => $staff->id,
