@@ -1,7 +1,7 @@
 document.addEventListener('livewire:navigating', (event) => {
+    const isDark = document.documentElement.classList.contains('dark');
+
     event.detail.onSwap(() => {
-        if (window.Flux) {
-            window.Flux.applyAppearance(window.localStorage.getItem('flux.appearance') || 'system');
-        }
+        document.documentElement.classList.toggle('dark', isDark);
     });
 });
