@@ -76,6 +76,14 @@ class Order extends Model
     }
 
     /**
+     * Get the inventory usage reports submitted for this order.
+     */
+    public function inventoryAdjustmentRequests(): HasMany
+    {
+        return $this->hasMany(InventoryAdjustmentRequest::class, 'order_id', 'order_id');
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>

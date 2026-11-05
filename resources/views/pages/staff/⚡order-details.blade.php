@@ -1,13 +1,19 @@
 <?php
 
+use App\Models\Inventory;
+use App\Models\InventoryAdjustmentRequest;
 use App\Models\Order;
 use App\OrderStatus;
 use App\Services\AuditLogService;
+use App\Services\InventoryService;
 use App\Services\OrderService;
 use App\Services\PaymentService;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
@@ -21,12 +27,29 @@ new #[Title('Order Details')] class extends Component
 
     public bool $paymentCleared = false;
 
-    public function mount(Order $order, PaymentService $paymentService): void
+    /** @var Collection<int, Inventory> */
+    public Collection $inventoryList;
+
+    /** @var Collection<int, InventoryAdjustmentRequest> */
+    public Collection $orderAdjustmentRequests;
+
+    /** @var array<int, string> Quantity inputs keyed by inventory_id. */
+    public array $usageQty = [];
+
+    /** @var array<int, string> Remarks inputs keyed by inventory_id. */
+    public array $usageRemarks = [];
+
+    public string $inventorySuccessMessage = '';
+
+    public string $inventoryErrorMessage = '';
+
+    public function mount(Order $order, PaymentService $paymentService, InventoryService $inventoryService): void
     {
         Gate::authorize('view', $order);
 
         $this->order = $order->load('customer');
         $this->refreshPayment($paymentService);
+        $this->reloadInventory($inventoryService);
     }
 
     public function checkPayment(PaymentService $paymentService): void
@@ -61,12 +84,71 @@ new #[Title('Order Details')] class extends Component
         );
         $this->statusMessage = 'Order status updated to '.OrderStatus::from($status)->label().'.';
         $this->refreshPayment(app(PaymentService::class));
+        $this->reloadInventory(app(InventoryService::class));
+    }
+
+    /**
+     * Submit a material usage report for this order.
+     */
+    public function reportUsage(int $inventoryId, InventoryService $inventoryService): void
+    {
+        Gate::authorize('createLowStockAlert', Inventory::class);
+
+        $this->inventorySuccessMessage = '';
+        $this->inventoryErrorMessage = '';
+
+        $this->validate([
+            "usageQty.$inventoryId" => ['required', 'numeric', 'gt:0', 'max:999999999', 'decimal:0,3'],
+            "usageRemarks.$inventoryId" => ['nullable', 'string', 'max:500'],
+        ], [], [
+            "usageQty.$inventoryId" => 'quantity used',
+        ]);
+
+        $item = Inventory::query()->findOrFail($inventoryId);
+
+        try {
+            $inventoryService->createAdjustmentRequest(
+                $item,
+                auth()->user(),
+                (string) $this->usageQty[$inventoryId],
+                $this->usageRemarks[$inventoryId] ?? null,
+                $this->order,
+            );
+        } catch (ValidationException $exception) {
+            $this->inventoryErrorMessage = $exception->errors()['quantity'][0]
+                ?? $exception->errors()['inventory'][0]
+                ?? 'Could not submit usage report.';
+            $this->reloadInventory($inventoryService);
+
+            return;
+        }
+
+        $this->inventorySuccessMessage = "Usage of {$item->material_name} reported to the cashier.";
+        unset($this->usageQty[$inventoryId], $this->usageRemarks[$inventoryId]);
+        $this->reloadInventory($inventoryService);
+    }
+
+    /**
+     * Whether the inventory usage section should be visible.
+     */
+    #[Computed]
+    public function showInventorySection(): bool
+    {
+        $status = OrderStatus::tryFrom($this->order->status);
+
+        return $status === OrderStatus::InProgress || $status === OrderStatus::ReadyForPickup;
     }
 
     private function refreshPayment(PaymentService $paymentService): void
     {
         $this->paymentStatus = $paymentService->getPaymentStatus($this->order);
         $this->paymentCleared = $paymentService->isReadyForProduction($this->order);
+    }
+
+    private function reloadInventory(InventoryService $inventoryService): void
+    {
+        $this->inventoryList = $inventoryService->getStaffInventoryList(auth()->user());
+        $this->orderAdjustmentRequests = $inventoryService->getOrderAdjustmentRequests($this->order);
     }
 };
 ?>
@@ -185,6 +267,120 @@ new #[Title('Order Details')] class extends Component
                     <img src="{{ $designUrl }}" alt="Customer design file for order #{{ $order->order_id }}" class="mx-auto max-h-[80vh] w-auto max-w-full select-none object-contain" draggable="false">
                 @endif
             </div>
+        </section>
+    @endif
+
+    @if ($this->showInventorySection)
+        @php
+            $fmt = fn ($number) => rtrim(rtrim(number_format((float) $number, 3, '.', ''), '0'), '.');
+        @endphp
+        <section class="ps-glass grid gap-6 p-5 sm:p-8" aria-labelledby="inventory-usage-heading">
+            <div class="grid gap-1">
+                <h2 id="inventory-usage-heading" class="text-xl font-semibold text-[var(--ps-text)]">Material Usage</h2>
+                <p class="text-sm text-[var(--ps-muted)]">Report how much of each material you used for this order. The cashier will apply the deduction.</p>
+            </div>
+
+            @if ($inventorySuccessMessage !== '')
+                <div role="status" class="rounded-xl border border-[var(--ps-border-strong)] bg-[var(--ps-accent-soft)] px-4 py-3 text-sm font-medium text-[var(--ps-text)]">
+                    {{ $inventorySuccessMessage }}
+                </div>
+            @endif
+
+            @if ($inventoryErrorMessage !== '')
+                <div role="alert" class="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-600 dark:text-red-400">
+                    {{ $inventoryErrorMessage }}
+                </div>
+            @endif
+
+            {{-- Already-submitted reports for this order --}}
+            @if ($orderAdjustmentRequests->isNotEmpty())
+                <div class="grid gap-2">
+                    <h3 class="text-sm font-semibold text-[var(--ps-text)]">Submitted reports for this order</h3>
+                    <ul class="divide-y divide-[var(--ps-border)] overflow-hidden rounded-xl border border-[var(--ps-border)]">
+                        @foreach ($orderAdjustmentRequests as $req)
+                            <li wire:key="adj-req-{{ $req->id }}" class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                                <div class="grid gap-0.5">
+                                    <p class="font-medium text-[var(--ps-text)]">{{ $req->inventory->material_name ?? '—' }}</p>
+                                    <p class="text-sm text-[var(--ps-muted)]">
+                                        {{ $fmt($req->quantity) }} {{ $req->inventory->unit ?? '' }}
+                                        @if ($req->remarks)
+                                            · {{ $req->remarks }}
+                                        @endif
+                                    </p>
+                                </div>
+                                <x-status-badge
+                                    :tone="match ($req->status) {
+                                        'completed' => 'success',
+                                        'in_progress' => 'progress',
+                                        default => 'warning',
+                                    }"
+                                    :label="match ($req->status) {
+                                        'completed' => 'Applied',
+                                        'in_progress' => 'Being reviewed',
+                                        default => 'Pending cashier',
+                                    }"
+                                />
+                            </li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+
+            {{-- Per-material report forms --}}
+            @if ($inventoryList->isEmpty())
+                <p class="text-sm text-[var(--ps-muted)]">No materials are assigned to your specialties.</p>
+            @else
+                <ul class="divide-y divide-[var(--ps-border)] overflow-hidden rounded-xl border border-[var(--ps-border)]">
+                    @foreach ($inventoryList as $item)
+                        @php
+                            $alreadyReported = $orderAdjustmentRequests->contains(
+                                fn ($r) => $r->inventory_id === $item->inventory_id
+                            );
+                        @endphp
+                        <li wire:key="inv-{{ $item->inventory_id }}" class="grid gap-3 px-4 py-4 sm:px-5">
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <div class="grid gap-0.5">
+                                    <h3 class="font-medium text-[var(--ps-text)]">{{ $item->material_name }}</h3>
+                                    <p class="text-xs text-[var(--ps-muted)]">Available: {{ $fmt($item->quantity) }} {{ $item->unit }}</p>
+                                </div>
+                                <x-status-badge :tone="$item->stockStatusTone()" :label="$item->stockStatusLabel()" />
+                            </div>
+
+                            @if ($alreadyReported)
+                                <p class="text-sm font-medium text-amber-500">Already reported for this order. Waiting for the cashier.</p>
+                            @else
+                                <div class="flex flex-col gap-2 sm:flex-row">
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.001"
+                                        wire:model="usageQty.{{ $item->inventory_id }}"
+                                        class="ps-input sm:max-w-40"
+                                        placeholder="Qty used"
+                                        aria-label="Quantity of {{ $item->material_name }} used for this order"
+                                    >
+                                    <input
+                                        type="text"
+                                        wire:model="usageRemarks.{{ $item->inventory_id }}"
+                                        class="ps-input"
+                                        maxlength="500"
+                                        placeholder="Remarks (optional)"
+                                        aria-label="Remarks for {{ $item->material_name }} usage"
+                                    >
+                                    <button
+                                        type="button"
+                                        wire:click="reportUsage({{ $item->inventory_id }})"
+                                        wire:loading.attr="disabled"
+                                        class="ps-button-secondary shrink-0"
+                                    >Report usage</button>
+                                </div>
+                                @error("usageQty.{$item->inventory_id}") <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+                                @error("usageRemarks.{$item->inventory_id}") <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+                            @endif
+                        </li>
+                    @endforeach
+                </ul>
+            @endif
         </section>
     @endif
 </div>
