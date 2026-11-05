@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
-new #[Title('Low-Stock Reports')] class extends Component
+new #[Title('Inventory Reports')] class extends Component
 {
     public Collection $openAlerts;
 
@@ -28,7 +28,7 @@ new #[Title('Low-Stock Reports')] class extends Component
 <div class="cashier-low-stock-page grid gap-8">
     <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div class="grid gap-1">
-            <h1 class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">Low-Stock Reports</h1>
+            <h1 class="text-3xl font-semibold tracking-tight text-[var(--ps-text)]">Inventory Reports</h1>
             <p class="text-sm leading-6 text-[var(--ps-muted)]">Reports sent by staff. A report clears by itself once you add stock to that material.</p>
         </div>
         <a href="{{ route('cashier.inventory') }}" wire:navigate class="ps-button-primary w-fit">Go to inventory</a>

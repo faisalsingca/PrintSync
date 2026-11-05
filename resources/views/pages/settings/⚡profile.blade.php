@@ -116,6 +116,12 @@ new #[Title('Profile settings')] class extends Component {
     }
 
     #[Computed]
+    public function isEmailVerified(): bool
+    {
+        return (bool) Auth::user()->hasVerifiedEmail();
+    }
+
+    #[Computed]
     public function hasUnverifiedEmail(): bool
     {
         return Auth::user() instanceof MustVerifyEmail && ! Auth::user()->hasVerifiedEmail();
@@ -143,32 +149,72 @@ new #[Title('Profile settings')] class extends Component {
             <flux:input wire:model="name" :label="__('Name')" type="text" required autofocus autocomplete="name" />
 
             <div>
-                <flux:text class="mb-2">
-                    {{ __('Current email address: :email', ['email' => Auth::user()->email]) }}
-                </flux:text>
+                <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex items-center gap-2">
+                        <label class="text-sm font-medium text-[var(--ps-text)]">{{ __('Email') }}</label>
+                        @if ($this->isEmailVerified)
+                            <x-status-badge tone="success" :label="__('Verified')" />
+                        @else
+                            <x-status-badge tone="warning" :label="__('Unverified')" />
+                        @endif
+                    </div>
 
-                <flux:input wire:model.live="email" :label="__('Email')" type="email" required autocomplete="email" />
+                    <flux:text class="text-xs">
+                        {{ __('Current email address: :email', ['email' => Auth::user()->email]) }}
+                    </flux:text>
+                </div>
+
+                <flux:input wire:model.live="email" type="email" required autocomplete="email" />
                 @error('email') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
 
                 @if ($email !== Auth::user()->email && $email !== $pendingEmailChange?->new_email)
-                    <flux:input
-                        wire:model="emailConfirmation"
-                        :label="__('Confirm new email')"
-                        type="email"
-                        required
-                        autocomplete="off"
-                    />
-                    <flux:text class="mt-2">
-                        {{ __('Enter the new address again to catch typing mistakes. We will send the verification email only if both addresses match.') }}
-                    </flux:text>
-                    @error('emailConfirmation') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
-                    <flux:text class="mt-2">
-                        {{ __('We can check the address format and mail domain, but only the recipient can confirm that this inbox is accessible by opening the verification link we send.') }}
-                    </flux:text>
+                    <div class="mt-3 rounded-lg border border-sky-300 bg-sky-50 p-3 text-xs text-sky-950 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200">
+                        <div class="flex items-center gap-1.5 font-semibold text-sky-900 dark:text-sky-100">
+                            <flux:icon.shield-check class="size-4 shrink-0 text-sky-600 dark:text-sky-400" />
+                            <span>{{ __('Email Verification Required') }}</span>
+                        </div>
+                        <p class="mt-1">
+                            {{ __('To avoid fake or mistyped email addresses, a verification link will be sent. The address will only update once verified from the inbox.') }}
+                        </p>
+                    </div>
+
+                    <div class="mt-3">
+                        <flux:input
+                            wire:model="emailConfirmation"
+                            :label="__('Confirm new email')"
+                            type="email"
+                            required
+                            autocomplete="off"
+                        />
+                        <flux:text class="mt-2">
+                            {{ __('Enter the new address again to catch typing mistakes. We will send the verification email only if both addresses match.') }}
+                        </flux:text>
+                        @error('emailConfirmation') <p class="text-sm text-red-500">{{ $message }}</p> @enderror
+                        <flux:text class="mt-2">
+                            {{ __('We can check the address format and mail domain, but only the recipient can confirm that this inbox is accessible by opening the verification link we send.') }}
+                        </flux:text>
+                    </div>
                 @endif
 
                 @if ($pendingEmailChange)
                     <div class="mt-4 space-y-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div class="flex items-center gap-2">
+                                <x-status-badge tone="progress" :label="__('Pending Verification')" />
+                                <span class="font-semibold">{{ $pendingEmailChange->new_email }}</span>
+                            </div>
+
+                            <flux:button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                class="!text-amber-950 hover:!bg-amber-200 dark:!text-amber-100 dark:hover:!bg-amber-900"
+                                wire:click="cancelEmailChange"
+                            >
+                                {{ __('Cancel email change') }}
+                            </flux:button>
+                        </div>
+
                         <p>
                             {{ __('A change to :email is pending. The current address will remain on your account until the required confirmations are complete.', ['email' => $pendingEmailChange->new_email]) }}
                         </p>
@@ -180,16 +226,6 @@ new #[Title('Profile settings')] class extends Component {
                         @else
                             <p>{{ __('Verify the new address using the link we sent. Your current address was not previously verified, so it does not need to approve the change.') }}</p>
                         @endif
-
-                        <flux:button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            class="!text-amber-950 hover:!bg-amber-200 dark:!text-amber-100 dark:hover:!bg-amber-900"
-                            wire:click="cancelEmailChange"
-                        >
-                            {{ __('Cancel email change') }}
-                        </flux:button>
                     </div>
                 @endif
 

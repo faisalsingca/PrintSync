@@ -22,7 +22,7 @@
             ['Payment Records', 'document-text', route('cashier.payment-records'), request()->routeIs('cashier.payment-records')],
             ['Inventory', 'cube', route('cashier.inventory'), request()->routeIs('cashier.inventory')],
             ['Add Material', 'plus', route('cashier.inventory.create'), request()->routeIs('cashier.inventory.create')],
-            ['Low-Stock Reports', 'exclamation-triangle', route('cashier.low-stock-reports'), request()->routeIs('cashier.low-stock-reports')],
+            ['Inventory Reports', 'chart-bar', route('cashier.low-stock-reports'), request()->routeIs('cashier.low-stock-reports')],
             ['Archived Materials', 'archive-box', route('cashier.inventory.archive'), request()->routeIs('cashier.inventory.archive')],
         ],
         'owner' => [

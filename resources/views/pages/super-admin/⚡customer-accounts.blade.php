@@ -92,7 +92,7 @@ new #[Title('Customer Accounts')] class extends Component
         Gate::authorize('viewCustomerAccounts', User::class);
 
         return User::query()
-            ->select(['id', 'name', 'email', 'phone', 'is_active', 'created_at'])
+            ->select(['id', 'name', 'email', 'phone', 'is_active', 'email_verified_at', 'created_at'])
             ->where('role', 'customer')
             ->when(trim($this->search) !== '', function ($query): void {
                 $search = '%'.str_replace(['%', '_'], ['\\%', '\\_'], trim($this->search)).'%';
@@ -143,7 +143,16 @@ new #[Title('Customer Accounts')] class extends Component
                     @forelse ($this->customerAccounts() as $customer)
                         <tr wire:key="customer-account-{{ $customer->id }}">
                             <td class="px-4 py-3 font-medium text-[var(--ps-text)]">{{ $customer->name }}</td>
-                            <td class="px-4 py-3 text-[var(--ps-muted)]">{{ $customer->email }}</td>
+                            <td class="px-4 py-3 text-[var(--ps-muted)]">
+                                <div class="flex items-center gap-1.5">
+                                    <span>{{ $customer->email }}</span>
+                                    @if ($customer->email_verified_at)
+                                        <x-status-badge tone="success" :label="__('Verified')" />
+                                    @else
+                                        <x-status-badge tone="warning" :label="__('Unverified')" />
+                                    @endif
+                                </div>
+                            </td>
                             <td class="px-4 py-3 text-[var(--ps-muted)]">{{ $customer->phone ?: '—' }}</td>
                             <td class="px-4 py-3"><x-status-badge :tone="$customer->is_active ? 'success' : 'danger'" :label="$customer->is_active ? 'Active' : 'Deactivated'" /></td>
                             <td class="px-4 py-3 text-[var(--ps-muted)]">{{ $customer->created_at?->format('M j, Y') ?? '—' }}</td>

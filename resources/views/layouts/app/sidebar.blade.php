@@ -18,11 +18,7 @@
 
         <div class="ps-main-shell">
             <header class="ps-topbar">
-                <span class="ps-topbar-title truncate">{{ $title ?? __('Workspace') }}</span>
-
-                <div class="flex shrink-0 items-center gap-3">
-                    <x-appearance-toggle />
-                    <x-user-menu />
+                <div class="flex items-center gap-3 min-w-0">
                     <button
                         type="button"
                         class="ps-theme-toggle"
@@ -31,6 +27,13 @@
                     >
                         <flux:icon.bars-3 class="size-5" />
                     </button>
+
+                    <span class="ps-topbar-title truncate">{{ $title ?? __('Workspace') }}</span>
+                </div>
+
+                <div class="flex shrink-0 items-center gap-3">
+                    <x-appearance-toggle />
+                    <x-user-menu />
                 </div>
             </header>
 

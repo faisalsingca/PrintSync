@@ -24,10 +24,35 @@ class EmailDomainHasMailRoute implements ValidationRule
             return;
         }
 
-        [, $domain] = explode('@', $value, 2);
+        [$username, $domain] = explode('@', $value, 2);
 
         if ($domain === '') {
             return;
+        }
+
+        $lowerDomain = strtolower($domain);
+
+        // Check for common fake Gmail structures
+        if ($lowerDomain === 'gmail.com' || $lowerDomain === 'googlemail.com') {
+            $rawUsername = str_replace('.', '', $username);
+
+            if (strlen($rawUsername) < 6 || strlen($rawUsername) > 30) {
+                $fail(__('Gmail usernames must be between 6 and 30 characters.'));
+
+                return;
+            }
+
+            if (str_starts_with($username, '.') || str_ends_with($username, '.') || str_contains($username, '..')) {
+                $fail(__('Gmail addresses cannot begin, end, or contain consecutive dots.'));
+
+                return;
+            }
+
+            if (! preg_match('/^[a-zA-Z0-9.]+$/', $username)) {
+                $fail(__('Gmail addresses can only contain letters, numbers, and periods.'));
+
+                return;
+            }
         }
 
         if (! $this->hasDnsRecord($domain, 'MX') && ! $this->hasDnsRecord($domain, 'A')) {

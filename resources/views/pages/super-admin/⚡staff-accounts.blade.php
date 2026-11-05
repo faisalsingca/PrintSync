@@ -239,7 +239,16 @@ new #[Title('Staff Accounts')] class extends Component
                     @forelse ($this->staffAccounts() as $staffAccount)
                         <tr wire:key="staff-account-{{ $staffAccount->id }}">
                             <td class="px-4 py-3 font-medium text-[var(--ps-text)]">{{ $staffAccount->name }}</td>
-                            <td class="px-4 py-3 text-[var(--ps-muted)]">{{ $staffAccount->email }}</td>
+                            <td class="px-4 py-3 text-[var(--ps-muted)]">
+                                <div class="flex items-center gap-1.5">
+                                    <span>{{ $staffAccount->email }}</span>
+                                    @if ($staffAccount->email_verified_at)
+                                        <x-status-badge tone="success" :label="__('Verified')" />
+                                    @else
+                                        <x-status-badge tone="warning" :label="__('Unverified')" />
+                                    @endif
+                                </div>
+                            </td>
                             <td class="px-4 py-3 capitalize text-[var(--ps-text)]">{{ $staffAccount->role }}</td>
                             <td class="px-4 py-3"><x-status-badge :tone="$staffAccount->is_active ? 'success' : 'danger'" :label="$staffAccount->is_active ? 'Active' : 'Deactivated'" /></td>
                             <td class="px-4 py-3 text-right">
