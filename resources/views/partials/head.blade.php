@@ -17,9 +17,32 @@
 
         window.localStorage.setItem('printsync.appearance-initialized', '1');
     }
+
+    (() => {
+        const appearance = window.localStorage.getItem('flux.appearance') || 'dark';
+        const isDark = appearance === 'dark' || (appearance === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.toggle('dark', isDark);
+    })();
 </script>
 
 @fluxAppearance
+
+<script>
+    (() => {
+        const syncCookie = () => {
+            const isDark = document.documentElement.classList.contains('dark');
+            document.cookie = 'flux_appearance=' + (isDark ? 'dark' : 'light') + '; path=/; max-age=31536000; SameSite=Lax';
+        };
+        syncCookie();
+        if (window.Flux && window.Flux.applyAppearance) {
+            const originalApply = window.Flux.applyAppearance;
+            window.Flux.applyAppearance = function (appearance) {
+                originalApply(appearance);
+                syncCookie();
+            };
+        }
+    })();
+</script>
 
 <style>
     html,

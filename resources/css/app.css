@@ -133,6 +133,13 @@ select:focus[data-flux-control] {
     transition: background-color 220ms ease, color 220ms ease;
 }
 
+html.ps-navigating,
+html.ps-navigating *,
+html.ps-navigating *::before,
+html.ps-navigating *::after {
+    transition: none !important;
+}
+
 .ps-atmosphere {
     position: fixed;
     z-index: -1;
